@@ -1,59 +1,58 @@
 # Subtitle Fetcher API
 
-极简 FastAPI 服务，接收视频 URL，返回字幕纯文本或音频。支持 YouTube 和 B站。
+<p align="center">
+  <a href="./README.md">English</a> | <a href="./README_CN.md">简体中文</a>
+</p>
 
-## 特性
+A minimalist FastAPI service that receives video URLs and returns subtitles or audio. Supports YouTube and Bilibili.
 
-- **CC 字幕获取**：YouTube / B站 优先获取人工字幕和自动字幕
-- **音频兜底**：无字幕视频可返回音频 base64，供调用方（Claude/Kimi 等）自行处理
-- **批量处理**：支持最多 20 条 URL 并发获取
-- **频道抓取**：支持 YouTube 频道视频列表获取字幕
-- **批量导出**：支持 zip/json/txt/md 四种格式导出
-- **视频搜索**：内置 YouTube/B站 搜索，无需外部搜索引擎
+## Features
 
-## 环境配置
+- **CC Subtitle Extraction**: Priority access to manual and auto-generated subtitles from YouTube/Bilibili
+- **Audio Fallback**: Returns audio as base64 for videos without subtitles, letting callers (Claude/Kimi, etc.) process it
+- **Batch Processing**: Supports concurrent fetching for up to 20 URLs
+- **Channel Scraping**: Fetch subtitles from YouTube channel or Bilibili UP主 video lists
+- **Batch Export**: Export in zip/json/txt/md formats
+- **Video Search**: Built-in YouTube/Bilibili search, no external search engine needed
 
-### 1. 基础依赖
+## Quick Start
 
 ```bash
-# 安装依赖
+# Install dependencies
 pip install -r requirements.txt
-```
 
-### 2. 启动服务
-
-```bash
+# Start the service
 uvicorn main:app --host 0.0.0.0 --port 8765
 ```
 
-服务将在 `http://localhost:8765` 运行。
+The service will run at `http://localhost:8765`.
 
-## source 字段说明
+## The `source` Field
 
-API 响应中的 `source` 字段表示字幕来源：
+The `source` field in API responses indicates the subtitle origin:
 
-| source | 含义 | 说明 |
-|--------|------|------|
-| `cc` | 平台字幕 | 从视频平台获取的字幕（人工字幕或自动字幕） |
-| `audio` | 音频 | 无字幕，已返回音频 base64 供调用方处理 |
-| `none` | 无内容 | 无字幕，且未请求音频或音频获取失败 |
+| source | Meaning | Description |
+|--------|---------|-------------|
+| `cc` | Platform Subtitles | Subtitles from the video platform (manual or auto-generated) |
+| `audio` | Audio | No subtitles; audio base64 returned for caller processing |
+| `none` | No Content | No subtitles; audio not requested or failed to fetch |
 
-## return_audio 参数
+## The `return_audio` Parameter
 
-- `return_audio: true`（默认）：无字幕时下载音频并返回 base64
-- `return_audio: false`：无字幕时直接返回 `source: "none"`
+- `return_audio: true` (default): Downloads and returns audio as base64 when no subtitles are available
+- `return_audio: false`: Returns `source: "none"` when no subtitles are available
 
-适用场景：
-- **支持多模态的 AI（Claude、Kimi 等）**：设置 `return_audio: true`，拿到 base64 直接喂给模型
-- **纯文本场景**：设置 `return_audio: false`，跳过无字幕视频
+Use cases:
+- **Multimodal AI (Claude, Kimi, etc.)**: Set `return_audio: true`, feed the base64 directly to the model
+- **Text-only scenarios**: Set `return_audio: false` to skip videos without subtitles
 
-## API 接口
+## API Endpoints
 
 ### POST /subtitles
 
-获取单条视频字幕。
+Fetch subtitles for a single video.
 
-**请求体：**
+**Request:**
 ```json
 {
     "url": "https://www.youtube.com/watch?v=xxx",
@@ -61,33 +60,28 @@ API 响应中的 `source` 字段表示字幕来源：
 }
 ```
 
-**参数说明：**
-- `url`: 视频完整 URL
-- `return_audio`: 无字幕时是否返回音频 base64，默认 `true`
+**Parameters:**
+- `url`: Full video URL
+- `return_audio`: Whether to return audio base64 when no subtitles, default `true`
 
-**成功响应 (200)：**
+**Success Response (200):**
 ```json
 {
-    "title": "视频标题",
+    "title": "Video Title",
     "platform": "youtube",
     "duration": 845,
-    "language": "zh-Hans",
+    "language": "en",
     "source": "cc",
-    "subtitles": "字幕纯文本内容...",
+    "subtitles": "Subtitle text content...",
     "audio_base64": null
 }
 ```
 
-**source 字段说明：**
-- `"cc"`：来自 CC 字幕（人工字幕或自动字幕）
-- `"audio"`：无字幕，返回音频 base64
-- `"none"`：无字幕，未返回音频
-
 ### POST /subtitles/batch
 
-批量获取多个视频的字幕。
+Batch fetch subtitles for multiple videos.
 
-**请求体：**
+**Request:**
 ```json
 {
     "urls": [
@@ -99,16 +93,16 @@ API 响应中的 `source` 字段表示字幕来源：
 }
 ```
 
-**参数说明：**
-- `urls`: URL 列表，最多 20 条
-- `concurrency`: 并发数，默认 3，最大 5
-- `return_audio`: 无字幕时是否返回音频 base64，默认 `true`
+**Parameters:**
+- `urls`: List of URLs, max 20
+- `concurrency`: Concurrency level, default 3, max 5
+- `return_audio`: Whether to return audio base64 when no subtitles, default `true`
 
 ### POST /subtitles/channel
 
-获取频道/UP主的历史视频字幕。
+Fetch subtitles from a YouTube channel or Bilibili UP主 page.
 
-**请求体：**
+**Request:**
 ```json
 {
     "channel_url": "https://www.youtube.com/@mkbhd",
@@ -118,88 +112,39 @@ API 响应中的 `source` 字段表示字幕来源：
 }
 ```
 
-**参数说明：**
-- `channel_url`: YouTube 频道 URL (`@handle` 或 `/channel/UCxxx`) 或 B站空间 URL
-- `limit`: 获取最近 N 条视频，默认 20，最大 50
-- `concurrency`: 并发数，默认 3
-- `return_audio`: 无字幕时是否返回音频 base64，默认 `true`
-
-### POST /subtitles/batch/export
-
-批量导出视频字幕为文件。
-
-**请求体：**
-```json
-{
-    "urls": ["url1", "url2", ...],
-    "format": "zip",
-    "concurrency": 3,
-    "return_audio": true
-}
-```
-
-**参数说明：**
-- `urls`: 视频 URL 列表，最多 20 条
-- `format`: 导出格式，`zip` | `json` | `txt`，默认 `zip`
-- `concurrency`: 并发数，默认 3
-- `return_audio`: 无字幕时是否返回音频 base64，默认 `true`
-
-**返回：** 直接返回文件流，Content-Disposition 包含文件名
-
-**格式说明：**
-- **zip**: 每条视频一个 `.md` 文件，文件名格式 `{序号}_{视频标题}.md`
-- **json**: 完整的 JSON 结构，同 `/subtitles/batch` 接口
-- **txt**: 所有字幕合并为单个文件，视频间用分隔符隔开
-
-### POST /subtitles/channel/export
-
-导出整个频道的视频字幕为文件。
-
-**请求体：**
-```json
-{
-    "channel_url": "https://www.youtube.com/@mkbhd",
-    "limit": 20,
-    "format": "zip",
-    "concurrency": 3,
-    "return_audio": true
-}
-```
-
-**参数说明：**
-- `channel_url`: 频道主页 URL
-- `limit`: 获取最近 N 条视频，默认 20，最大 50
-- `format`: 导出格式，`zip` | `json` | `txt`，默认 `zip`
-- `concurrency`: 并发数，默认 3
-- `return_audio`: 无字幕时是否返回音频 base64，默认 `true`
+**Parameters:**
+- `channel_url`: YouTube channel URL (`@handle` or `/channel/UCxxx`) or Bilibili space URL
+- `limit`: Number of recent videos to fetch, default 20, max 50
+- `concurrency`: Concurrency level, default 3
+- `return_audio`: Whether to return audio base64 when no subtitles, default `true`
 
 ### POST /search
 
-搜索 YouTube 或 B站视频。
+Search YouTube or Bilibili videos.
 
-**请求体：**
+**Request:**
 ```json
 {
-    "query": "MacBook Pro 购买建议",
+    "query": "MacBook Pro review",
     "platform": "youtube",
     "limit": 10
 }
 ```
 
-**参数说明：**
-- `query`: 搜索关键词
-- `platform`: 搜索平台，`youtube` | `bilibili` | `all`，默认 `youtube`
-- `limit`: 返回结果数量，默认 10，最大 20
+**Parameters:**
+- `query`: Search keyword
+- `platform`: Search platform, `youtube` | `bilibili` | `all`, default `youtube`
+- `limit`: Number of results, default 10, max 20
 
-**成功响应 (200)：**
+**Success Response (200):**
 ```json
 {
-    "query": "MacBook Pro 购买建议",
+    "query": "MacBook Pro review",
     "platform": "youtube",
     "total": 10,
     "results": [
         {
-            "title": "MacBook Pro 2024 真实使用3个月体验",
+            "title": "MacBook Pro 2024 3-Month Real Usage Review",
             "url": "https://www.youtube.com/watch?v=xxx",
             "platform": "youtube",
             "duration": 845,
@@ -211,26 +156,15 @@ API 响应中的 `source` 字段表示字幕来源：
 }
 ```
 
-### GET /health
+## Local Testing
 
-健康检查。
-
-**响应：**
-```json
-{
-    "status": "ok"
-}
-```
-
-## 本地测试
-
-### 健康检查
+### Health Check
 
 ```bash
 curl http://localhost:8765/health
 ```
 
-### YouTube 测试
+### YouTube Test
 
 ```bash
 curl -X POST http://localhost:8765/subtitles \
@@ -238,7 +172,7 @@ curl -X POST http://localhost:8765/subtitles \
   -d '{"url": "https://www.youtube.com/watch?v=jNQXAC9IVRw"}'
 ```
 
-### B站测试（有 CC 字幕）
+### Bilibili Test (has CC subtitles)
 
 ```bash
 curl -X POST http://localhost:8765/subtitles \
@@ -246,7 +180,7 @@ curl -X POST http://localhost:8765/subtitles \
   -d '{"url": "https://www.bilibili.com/video/BVxxx"}'
 ```
 
-### B站测试（无字幕，返回音频）
+### No Subtitles, Return Audio
 
 ```bash
 curl -X POST http://localhost:8765/subtitles \
@@ -254,7 +188,7 @@ curl -X POST http://localhost:8765/subtitles \
   -d '{"url": "https://www.bilibili.com/video/BV1GJ411x7h7", "return_audio": true}'
 ```
 
-### 不返回音频（只获取有字幕的视频）
+### Skip Audio (subtitles only)
 
 ```bash
 curl -X POST http://localhost:8765/subtitles \
@@ -262,7 +196,7 @@ curl -X POST http://localhost:8765/subtitles \
   -d '{"url": "https://www.bilibili.com/video/BVxxx", "return_audio": false}'
 ```
 
-### 批量接口测试
+### Batch Test
 
 ```bash
 curl -X POST http://localhost:8765/subtitles/batch \
@@ -277,56 +211,25 @@ curl -X POST http://localhost:8765/subtitles/batch \
   }'
 ```
 
-### 导出频道字幕为 zip
-
-```bash
-curl -X POST http://localhost:8765/subtitles/channel/export \
-  -H "Content-Type: application/json" \
-  -d '{"channel_url": "https://www.youtube.com/@mkbhd", "limit": 5, "format": "zip"}' \
-  --output subtitles.zip
-```
-
-### 批量导出为 txt
-
-```bash
-curl -X POST http://localhost:8765/subtitles/batch/export \
-  -H "Content-Type: application/json" \
-  -d '{
-    "urls": [
-        "https://www.youtube.com/watch?v=jNQXAC9IVRw"
-    ],
-    "format": "txt"
-  }' \
-  --output subtitles.txt
-```
-
-### 搜索 YouTube 视频
+### Search YouTube
 
 ```bash
 curl -X POST http://localhost:8765/search \
   -H "Content-Type: application/json" \
-  -d '{"query": "MacBook Pro 购买建议", "platform": "youtube", "limit": 5}'
+  -d '{"query": "MacBook Pro review", "platform": "youtube", "limit": 5}'
 ```
 
-### 搜索 B站视频
+## Complete Workflow Example
 
 ```bash
-curl -X POST http://localhost:8765/search \
-  -H "Content-Type: application/json" \
-  -d '{"query": "MacBook Pro 购买建议", "platform": "bilibili", "limit": 5}'
-```
-
-## 完整使用链路示例
-
-```bash
-# Step 1: 搜索视频
+# Step 1: Search videos
 urls=$(curl -s -X POST http://localhost:8765/search \
   -H "Content-Type: application/json" \
-  -d '{"query": "Python 教程", "platform": "youtube", "limit": 3}' | \
-  python3 -c "import sys,json; print('\n'.join([r['url'] for r in json.load(sys.stdin)['results']]))")
+  -d '{"query": "Python tutorial", "platform": "youtube", "limit": 3}' | \
+  python3 -c "import sys,json; print('\"\"\"' + '\"\"\",\"\"\"'.join([r['url'] for r in json.load(sys.stdin)['results']]) + '\"\"\"')")
 
-# Step 2: 批量获取字幕
-echo '{"urls": ["'"$(echo $urls | sed 's/ /","/g')"'"], "return_audio": true}' | \
+# Step 2: Batch fetch subtitles
+echo "{\"urls\": [$urls], \"return_audio\": true}" | \
   curl -X POST http://localhost:8765/subtitles/batch \
   -H "Content-Type: application/json" \
   -d @-
@@ -334,22 +237,22 @@ echo '{"urls": ["'"$(echo $urls | sed 's/ /","/g')"'"], "return_audio": true}' |
 
 ## Claude Tool Schema
 
-### 单条字幕获取
+### Single Subtitle Fetch
 
 ```json
 {
   "name": "get_subtitles",
-  "description": "获取视频字幕，支持 YouTube 和 B站。无字幕时可返回音频供调用方处理。输入视频URL，返回字幕纯文本和视频元数据。",
+  "description": "Fetch video subtitles, supports YouTube and Bilibili. Returns audio for processing when no subtitles available. Input video URL, returns subtitle text and video metadata.",
   "input_schema": {
     "type": "object",
     "properties": {
       "url": {
         "type": "string",
-        "description": "视频完整URL，支持 YouTube 和 Bilibili"
+        "description": "Full video URL, supports YouTube and Bilibili"
       },
       "return_audio": {
         "type": "boolean",
-        "description": "无字幕时是否返回音频base64，默认true"
+        "description": "Return audio base64 when no subtitles, default true"
       }
     },
     "required": ["url"]
@@ -357,27 +260,27 @@ echo '{"urls": ["'"$(echo $urls | sed 's/ /","/g')"'"], "return_audio": true}' |
 }
 ```
 
-### 批量字幕获取
+### Batch Subtitle Fetch
 
 ```json
 {
   "name": "get_subtitles_batch",
-  "description": "批量获取多个视频的字幕，支持 YouTube 和 B站。无字幕时可返回音频供调用方处理。单条失败不影响整体。",
+  "description": "Batch fetch subtitles for multiple videos, supports YouTube and Bilibili. Returns audio for processing when no subtitles available. Individual failures don't affect the overall result.",
   "input_schema": {
     "type": "object",
     "properties": {
       "urls": {
         "type": "array",
         "items": { "type": "string" },
-        "description": "视频URL列表，最多20条"
+        "description": "List of video URLs, max 20"
       },
       "concurrency": {
         "type": "integer",
-        "description": "并发数，默认3，最大5"
+        "description": "Concurrency level, default 3, max 5"
       },
       "return_audio": {
         "type": "boolean",
-        "description": "无字幕时是否返回音频base64，默认true"
+        "description": "Return audio base64 when no subtitles, default true"
       }
     },
     "required": ["urls"]
@@ -385,58 +288,27 @@ echo '{"urls": ["'"$(echo $urls | sed 's/ /","/g')"'"], "return_audio": true}' |
 }
 ```
 
-### 频道字幕获取
-
-```json
-{
-  "name": "get_channel_subtitles",
-  "description": "获取某个 YouTube 频道或 B站 UP 主的历史视频字幕，用于内容分析。无字幕时可返回音频供调用方处理。",
-  "input_schema": {
-    "type": "object",
-    "properties": {
-      "channel_url": {
-        "type": "string",
-        "description": "频道主页URL，支持 YouTube @handle 和 B站 space.bilibili.com/uid"
-      },
-      "limit": {
-        "type": "integer",
-        "description": "获取最近N条视频，默认20，最大50"
-      },
-      "concurrency": {
-        "type": "integer",
-        "description": "并发数，默认3，最大5"
-      },
-      "return_audio": {
-        "type": "boolean",
-        "description": "无字幕时是否返回音频base64，默认true"
-      }
-    },
-    "required": ["channel_url"]
-  }
-}
-```
-
-### 视频搜索
+### Video Search
 
 ```json
 {
   "name": "search_videos",
-  "description": "在 YouTube 或 B站搜索视频，返回视频列表和URL。搜索后可配合 get_subtitles_batch 获取字幕内容。",
+  "description": "Search videos on YouTube or Bilibili, returns video list and URLs. Can be used with get_subtitles_batch to fetch subtitle content after searching.",
   "input_schema": {
     "type": "object",
     "properties": {
       "query": {
         "type": "string",
-        "description": "搜索关键词"
+        "description": "Search keyword"
       },
       "platform": {
         "type": "string",
         "enum": ["youtube", "bilibili", "all"],
-        "description": "搜索平台，默认 youtube"
+        "description": "Search platform, default youtube"
       },
       "limit": {
         "type": "integer",
-        "description": "返回结果数量，默认10，最大20"
+        "description": "Number of results, default 10, max 20"
       }
     },
     "required": ["query"]
@@ -444,32 +316,27 @@ echo '{"urls": ["'"$(echo $urls | sed 's/ /","/g')"'"], "return_audio": true}' |
 }
 ```
 
-## 导出格式选择建议
-
-| 格式 | 适用场景 |
-|------|----------|
-| **zip** | 人工逐条查阅，每个视频独立 `.md` 文件，含元数据 |
-| **json** | 二次程序处理，结构完整，含所有字段 |
-| **txt** | 全文关键词搜索，快速浏览多个视频内容 |
-
-## 技术栈
+## Tech Stack
 
 - Python 3.10+
 - FastAPI + uvicorn
 - yt-dlp
-- dashscope (阿里云语音识别)
-- 无数据库，无鉴权，本地运行
+- No database, no auth, local execution
 
-## 字幕获取逻辑
+## Subtitle Extraction Logic
 
-1. 优先获取人工 CC 字幕，fallback 到自动生成的字幕
-2. 语言优先级：`zh-Hans` → `zh` → `zh-CN` → `en` → 任意第一个
-3. 字幕格式优先：`json3` → `vtt` → `srt`
-4. 去除时间戳，合并为纯文本段落
-5. B站无字幕视频：如 return_audio=true，下载音频 → 返回 base64
+1. Priority: manual CC subtitles → auto-generated subtitles
+2. Language priority: `zh-Hans` → `zh` → `zh-CN` → `en` → first available
+3. Format priority: `json3` → `vtt` → `srt`
+4. Removes timestamps, merges into plain text paragraphs
+5. No subtitles + return_audio=true: Downloads audio → returns base64
 
-## 注意事项
+## Notes
 
-- **音频返回**：无字幕时可返回音频供调用方处理
-- **临时文件清理**：音频处理完成后自动删除临时文件
-- **API Key 安全**：`.env` 文件不要提交到版本控制
+- **Audio Return**: Returns audio for caller processing when no subtitles available
+- **Temp File Cleanup**: Temporary files automatically deleted after audio processing
+- **Rate Limiting**: Add delays between batches for large-scale crawling
+
+## License
+
+MIT
