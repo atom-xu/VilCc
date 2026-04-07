@@ -326,41 +326,29 @@ def fetch_subtitles(url: str, return_audio: bool = True) -> Dict[str, Any]:
             }
 
         # Download audio and return base64
-        if platform == "bilibili":
+        try:
+            audio_path = download_audio(url)
+            with open(audio_path, 'rb') as f:
+                audio_base64 = base64.b64encode(f.read()).decode('utf-8')
+
+            # Cleanup
             try:
-                audio_path = download_audio(url)
-                with open(audio_path, 'rb') as f:
-                    audio_base64 = base64.b64encode(f.read()).decode('utf-8')
+                os.remove(audio_path)
+                os.rmdir(os.path.dirname(audio_path))
+            except:
+                pass
 
-                # Cleanup
-                try:
-                    os.remove(audio_path)
-                    os.rmdir(os.path.dirname(audio_path))
-                except:
-                    pass
-
-                return {
-                    "title": title,
-                    "platform": platform,
-                    "duration": duration,
-                    "subtitles": None,
-                    "language": None,
-                    "source": "audio",
-                    "audio_base64": audio_base64,
-                }
-            except Exception as e:
-                # Audio download failed, return none
-                return {
-                    "title": title,
-                    "platform": platform,
-                    "duration": duration,
-                    "subtitles": None,
-                    "language": None,
-                    "source": "none",
-                    "audio_base64": None,
-                }
-        else:
-            # YouTube - return none (auto-caption already checked)
+            return {
+                "title": title,
+                "platform": platform,
+                "duration": duration,
+                "subtitles": None,
+                "language": None,
+                "source": "audio",
+                "audio_base64": audio_base64,
+            }
+        except Exception as e:
+            # Audio download failed, return none
             return {
                 "title": title,
                 "platform": platform,
