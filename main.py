@@ -85,7 +85,7 @@ class ChannelSubtitleResponse(BaseModel):
 class ChannelExportRequest(BaseModel):
     channel_url: str = Field(..., description="频道主页URL")
     limit: int = Field(default=20, ge=1, le=50, description="获取最近N条视频")
-    format: str = Field(default="zip", description="导出格式：zip、json、txt")
+    format: str = Field(default="zip", description="导出格式：zip、json、txt、md")
     return_audio: bool = Field(default=False, description="是否返回音频，默认否")
     concurrency: int = Field(default=3, ge=1, le=5, description="并发数")
     use_asr: bool = Field(default=True, description="是否使用ASR兜底")
@@ -93,7 +93,7 @@ class ChannelExportRequest(BaseModel):
 
 class BatchExportRequest(BaseModel):
     urls: List[str] = Field(..., description="视频URL列表，最多20条")
-    format: str = Field(default="zip", description="导出格式：zip、json、txt")
+    format: str = Field(default="zip", description="导出格式：zip、json、txt、md")
     return_audio: bool = Field(default=False, description="是否返回音频，默认否")
     concurrency: int = Field(default=3, ge=1, le=5, description="并发数")
     use_asr: bool = Field(default=True, description="是否使用ASR兜底")
@@ -276,6 +276,19 @@ async def export_batch_subtitles(request: BatchExportRequest):
             headers={"Content-Disposition": "attachment; filename=subtitles.txt"}
         )
 
+    elif request.format == "md":
+        # Return combined markdown
+        from fetcher import generate_md_content
+        sections = []
+        for i, item in enumerate(results, 1):
+            sections.append(generate_md_content(item, i))
+        md_content = "\n\n---\n\n".join(sections)
+        return Response(
+            content=md_content.encode('utf-8'),
+            media_type="text/markdown; charset=utf-8",
+            headers={"Content-Disposition": "attachment; filename=subtitles.md"}
+        )
+
     else:  # zip (default)
         # Create ZIP with markdown files
         zip_bytes = create_zip_export(results)
@@ -369,6 +382,23 @@ async def export_channel_subtitles(request: ChannelExportRequest):
             content=txt_content.encode('utf-8'),
             media_type="text/plain; charset=utf-8",
             headers={"Content-Disposition": f"attachment; filename={safe_name}_subtitles.txt"}
+        )
+
+    elif request.format == "md":
+        from fetcher import generate_md_content
+        sections = []
+        for i, item in enumerate(results, 1):
+            sections.append(generate_md_content(item, i))
+        md_content = f"# {channel_name} - 字幕导出\n\n"
+        md_content += f"**平台：**{channel_info.get('platform', '')}  \n"
+        md_content += f"**视频数：**{len(video_urls)}  \n"
+        md_content += f"**成功：**{batch_result['success']} | **失败：**{batch_result['failed']}\n\n"
+        md_content += "---\n\n"
+        md_content += "\n\n---\n\n".join(sections)
+        return Response(
+            content=md_content.encode('utf-8'),
+            media_type="text/markdown; charset=utf-8",
+            headers={"Content-Disposition": f"attachment; filename={safe_name}_subtitles.md"}
         )
 
     else:  # zip (default)
