@@ -1,14 +1,14 @@
 # Subtitle Fetcher API
 
-极简 FastAPI 服务，接收视频 URL，返回字幕纯文本。支持 YouTube 和 B站，对 B站无字幕视频提供 ASR 兜底。
+极简 FastAPI 服务，接收视频 URL，返回字幕纯文本或音频。支持 YouTube 和 B站。
 
 ## 特性
 
 - **CC 字幕获取**：YouTube / B站 优先获取人工字幕和自动字幕
-- **ASR 兜底**：B站无字幕视频自动使用 DashScope 语音识别
+- **音频兜底**：无字幕视频可返回音频 base64，供调用方（Claude/Kimi 等）自行处理
 - **批量处理**：支持最多 20 条 URL 并发获取
 - **频道抓取**：支持 YouTube 频道视频列表获取字幕
-- **批量导出**：支持 zip/json/txt 三种格式导出
+- **批量导出**：支持 zip/json/txt/md 四种格式导出
 - **视频搜索**：内置 YouTube/B站 搜索，无需外部搜索引擎
 
 ## 环境配置
@@ -20,42 +20,32 @@
 pip install -r requirements.txt
 ```
 
-### 2. DashScope ASR 配置（可选，用于 B站无字幕视频）
+### 2. 启动服务
 
 ```bash
-# 复制环境变量模板
-cp .env.example .env
-
-# 编辑 .env 文件，填入你的 DashScope API Key
-DASHSCOPE_API_KEY=your_key_here
-```
-
-获取 API Key：[https://dashscope.aliyun.com/](https://dashscope.aliyun.com/)
-
-### 3. 启动服务
-
-```bash
-# 加载环境变量并启动
-source .env && uvicorn main:app --host 0.0.0.0 --port 8765
-
-# 或者使用 export
-export DASHSCOPE_API_KEY=your_key_here
 uvicorn main:app --host 0.0.0.0 --port 8765
 ```
 
 服务将在 `http://localhost:8765` 运行。
 
-## ASR 时间预期
+## source 字段说明
 
-使用 DashScope ASR 识别 B站无字幕视频时，处理时间与视频时长约为 **1:1 比例**：
+API 响应中的 `source` 字段表示字幕来源：
 
-| 视频时长 | 预计处理时间 |
-|---------|-------------|
-| 1 分钟  | 10-30 秒    |
-| 5 分钟  | 1-2 分钟    |
-| 10 分钟 | 2-4 分钟    |
+| source | 含义 | 说明 |
+|--------|------|------|
+| `cc` | 平台字幕 | 从视频平台获取的字幕（人工字幕或自动字幕） |
+| `audio` | 音频 | 无字幕，已返回音频 base64 供调用方处理 |
+| `none` | 无内容 | 无字幕，且未请求音频或音频获取失败 |
 
-如需跳过 ASR（只获取有 CC 字幕的视频），请在请求中设置 `use_asr: false`。
+## return_audio 参数
+
+- `return_audio: true`（默认）：无字幕时下载音频并返回 base64
+- `return_audio: false`：无字幕时直接返回 `source: "none"`
+
+适用场景：
+- **支持多模态的 AI（Claude、Kimi 等）**：设置 `return_audio: true`，拿到 base64 直接喂给模型
+- **纯文本场景**：设置 `return_audio: false`，跳过无字幕视频
 
 ## API 接口
 
@@ -67,13 +57,13 @@ uvicorn main:app --host 0.0.0.0 --port 8765
 ```json
 {
     "url": "https://www.youtube.com/watch?v=xxx",
-    "use_asr": true
+    "return_audio": true
 }
 ```
 
 **参数说明：**
 - `url`: 视频完整 URL
-- `use_asr`: 是否使用 ASR 兜底（仅 B站无字幕视频），默认 `true`
+- `return_audio`: 无字幕时是否返回音频 base64，默认 `true`
 
 **成功响应 (200)：**
 ```json
@@ -83,13 +73,15 @@ uvicorn main:app --host 0.0.0.0 --port 8765
     "duration": 845,
     "language": "zh-Hans",
     "source": "cc",
-    "subtitles": "字幕纯文本内容..."
+    "subtitles": "字幕纯文本内容...",
+    "audio_base64": null
 }
 ```
 
 **source 字段说明：**
 - `"cc"`：来自 CC 字幕（人工字幕或自动字幕）
-- `"asr"`：来自 DashScope 语音识别（仅 B站）
+- `"audio"`：无字幕，返回音频 base64
+- `"none"`：无字幕，未返回音频
 
 ### POST /subtitles/batch
 
@@ -103,14 +95,14 @@ uvicorn main:app --host 0.0.0.0 --port 8765
         "https://www.bilibili.com/video/BVxxx"
     ],
     "concurrency": 3,
-    "use_asr": true
+    "return_audio": true
 }
 ```
 
 **参数说明：**
 - `urls`: URL 列表，最多 20 条
 - `concurrency`: 并发数，默认 3，最大 5
-- `use_asr`: 是否使用 ASR 兜底，默认 `true`
+- `return_audio`: 无字幕时是否返回音频 base64，默认 `true`
 
 ### POST /subtitles/channel
 
@@ -122,7 +114,7 @@ uvicorn main:app --host 0.0.0.0 --port 8765
     "channel_url": "https://www.youtube.com/@mkbhd",
     "limit": 20,
     "concurrency": 3,
-    "use_asr": true
+    "return_audio": true
 }
 ```
 
@@ -130,7 +122,7 @@ uvicorn main:app --host 0.0.0.0 --port 8765
 - `channel_url`: YouTube 频道 URL (`@handle` 或 `/channel/UCxxx`) 或 B站空间 URL
 - `limit`: 获取最近 N 条视频，默认 20，最大 50
 - `concurrency`: 并发数，默认 3
-- `use_asr`: 是否使用 ASR 兜底，默认 `true`
+- `return_audio`: 无字幕时是否返回音频 base64，默认 `true`
 
 ### POST /subtitles/batch/export
 
@@ -142,7 +134,7 @@ uvicorn main:app --host 0.0.0.0 --port 8765
     "urls": ["url1", "url2", ...],
     "format": "zip",
     "concurrency": 3,
-    "use_asr": true
+    "return_audio": true
 }
 ```
 
@@ -150,7 +142,7 @@ uvicorn main:app --host 0.0.0.0 --port 8765
 - `urls`: 视频 URL 列表，最多 20 条
 - `format`: 导出格式，`zip` | `json` | `txt`，默认 `zip`
 - `concurrency`: 并发数，默认 3
-- `use_asr`: 是否使用 ASR 兜底，默认 `true`
+- `return_audio`: 无字幕时是否返回音频 base64，默认 `true`
 
 **返回：** 直接返回文件流，Content-Disposition 包含文件名
 
@@ -170,7 +162,7 @@ uvicorn main:app --host 0.0.0.0 --port 8765
     "limit": 20,
     "format": "zip",
     "concurrency": 3,
-    "use_asr": true
+    "return_audio": true
 }
 ```
 
@@ -179,7 +171,7 @@ uvicorn main:app --host 0.0.0.0 --port 8765
 - `limit`: 获取最近 N 条视频，默认 20，最大 50
 - `format`: 导出格式，`zip` | `json` | `txt`，默认 `zip`
 - `concurrency`: 并发数，默认 3
-- `use_asr`: 是否使用 ASR 兜底，默认 `true`
+- `return_audio`: 无字幕时是否返回音频 base64，默认 `true`
 
 ### POST /search
 
@@ -254,20 +246,20 @@ curl -X POST http://localhost:8765/subtitles \
   -d '{"url": "https://www.bilibili.com/video/BVxxx"}'
 ```
 
-### B站测试（无字幕，走 ASR）
+### B站测试（无字幕，返回音频）
 
 ```bash
 curl -X POST http://localhost:8765/subtitles \
   -H "Content-Type: application/json" \
-  -d '{"url": "https://www.bilibili.com/video/BV1GJ411x7h7", "use_asr": true}'
+  -d '{"url": "https://www.bilibili.com/video/BV1GJ411x7h7", "return_audio": true}'
 ```
 
-### 关闭 ASR（只获取有字幕的视频）
+### 不返回音频（只获取有字幕的视频）
 
 ```bash
 curl -X POST http://localhost:8765/subtitles \
   -H "Content-Type: application/json" \
-  -d '{"url": "https://www.bilibili.com/video/BVxxx", "use_asr": false}'
+  -d '{"url": "https://www.bilibili.com/video/BVxxx", "return_audio": false}'
 ```
 
 ### 批量接口测试
@@ -281,7 +273,7 @@ curl -X POST http://localhost:8765/subtitles/batch \
         "https://www.youtube.com/watch?v=invalid12345"
     ],
     "concurrency": 2,
-    "use_asr": true
+    "return_audio": true
   }'
 ```
 
@@ -334,7 +326,7 @@ urls=$(curl -s -X POST http://localhost:8765/search \
   python3 -c "import sys,json; print('\n'.join([r['url'] for r in json.load(sys.stdin)['results']]))")
 
 # Step 2: 批量获取字幕
-echo '{"urls": ["'"$(echo $urls | sed 's/ /","/g')"'"], "use_asr": true}' | \
+echo '{"urls": ["'"$(echo $urls | sed 's/ /","/g')"'"], "return_audio": true}' | \
   curl -X POST http://localhost:8765/subtitles/batch \
   -H "Content-Type: application/json" \
   -d @-
@@ -347,7 +339,7 @@ echo '{"urls": ["'"$(echo $urls | sed 's/ /","/g')"'"], "use_asr": true}' | \
 ```json
 {
   "name": "get_subtitles",
-  "description": "获取视频字幕，支持 YouTube 和 B站。对 B站无字幕视频自动使用 ASR 语音识别。输入视频URL，返回字幕纯文本和视频元数据。",
+  "description": "获取视频字幕，支持 YouTube 和 B站。无字幕时可返回音频供调用方处理。输入视频URL，返回字幕纯文本和视频元数据。",
   "input_schema": {
     "type": "object",
     "properties": {
@@ -355,9 +347,9 @@ echo '{"urls": ["'"$(echo $urls | sed 's/ /","/g')"'"], "use_asr": true}' | \
         "type": "string",
         "description": "视频完整URL，支持 YouTube 和 Bilibili"
       },
-      "use_asr": {
+      "return_audio": {
         "type": "boolean",
-        "description": "是否使用ASR兜底（仅B站无字幕视频），默认true"
+        "description": "无字幕时是否返回音频base64，默认true"
       }
     },
     "required": ["url"]
@@ -370,7 +362,7 @@ echo '{"urls": ["'"$(echo $urls | sed 's/ /","/g')"'"], "use_asr": true}' | \
 ```json
 {
   "name": "get_subtitles_batch",
-  "description": "批量获取多个视频的字幕，支持 YouTube 和 B站。对 B站无字幕视频自动使用 ASR 语音识别。单条失败不影响整体。",
+  "description": "批量获取多个视频的字幕，支持 YouTube 和 B站。无字幕时可返回音频供调用方处理。单条失败不影响整体。",
   "input_schema": {
     "type": "object",
     "properties": {
@@ -383,9 +375,9 @@ echo '{"urls": ["'"$(echo $urls | sed 's/ /","/g')"'"], "use_asr": true}' | \
         "type": "integer",
         "description": "并发数，默认3，最大5"
       },
-      "use_asr": {
+      "return_audio": {
         "type": "boolean",
-        "description": "是否使用ASR兜底（仅B站无字幕视频），默认true"
+        "description": "无字幕时是否返回音频base64，默认true"
       }
     },
     "required": ["urls"]
@@ -398,7 +390,7 @@ echo '{"urls": ["'"$(echo $urls | sed 's/ /","/g')"'"], "use_asr": true}' | \
 ```json
 {
   "name": "get_channel_subtitles",
-  "description": "获取某个 YouTube 频道或 B站 UP 主的历史视频字幕，用于内容分析。对 B站无字幕视频自动使用 ASR 语音识别。",
+  "description": "获取某个 YouTube 频道或 B站 UP 主的历史视频字幕，用于内容分析。无字幕时可返回音频供调用方处理。",
   "input_schema": {
     "type": "object",
     "properties": {
@@ -414,9 +406,9 @@ echo '{"urls": ["'"$(echo $urls | sed 's/ /","/g')"'"], "use_asr": true}' | \
         "type": "integer",
         "description": "并发数，默认3，最大5"
       },
-      "use_asr": {
+      "return_audio": {
         "type": "boolean",
-        "description": "是否使用ASR兜底（仅B站无字幕视频），默认true"
+        "description": "无字幕时是否返回音频base64，默认true"
       }
     },
     "required": ["channel_url"]
@@ -474,10 +466,10 @@ echo '{"urls": ["'"$(echo $urls | sed 's/ /","/g')"'"], "use_asr": true}' | \
 2. 语言优先级：`zh-Hans` → `zh` → `zh-CN` → `en` → 任意第一个
 3. 字幕格式优先：`json3` → `vtt` → `srt`
 4. 去除时间戳，合并为纯文本段落
-5. B站无字幕视频：自动下载音频 → DashScope ASR 识别 → 返回文本
+5. B站无字幕视频：如 return_audio=true，下载音频 → 返回 base64
 
 ## 注意事项
 
-- **ASR 仅用于 B站**：YouTube auto-caption 覆盖率已足够
-- **临时文件清理**：ASR 完成后自动删除下载的音频文件
+- **音频返回**：无字幕时可返回音频供调用方处理
+- **临时文件清理**：音频处理完成后自动删除临时文件
 - **API Key 安全**：`.env` 文件不要提交到版本控制

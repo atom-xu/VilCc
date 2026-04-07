@@ -48,7 +48,7 @@ class BatchTask:
     # 执行配置
     batch_size: int = 5  # 每批处理数量
     concurrency: int = 3
-    use_asr: bool = True
+    return_audio: bool = True
     # 进度追踪
     current_batch: int = 0
     total_batches: int = 0
@@ -66,7 +66,7 @@ def create_task(
     video_urls: Optional[List[str]] = None,
     batch_size: int = 5,
     concurrency: int = 3,
-    use_asr: bool = True
+    return_audio: bool = True
 ) -> BatchTask:
     """
     创建新的批处理任务
@@ -77,7 +77,7 @@ def create_task(
         video_urls: 视频URL列表（task_type=batch_urls时必填）
         batch_size: 每批处理数量
         concurrency: 并发数
-        use_asr: 是否使用ASR兜底
+        return_audio: 无字幕时是否返回音频
 
     Returns:
         BatchTask 任务对象
@@ -94,7 +94,7 @@ def create_task(
         total_videos=len(urls),
         batch_size=batch_size,
         concurrency=concurrency,
-        use_asr=use_asr,
+        return_audio=return_audio,
         total_batches=(len(urls) + batch_size - 1) // batch_size if urls else 0
     )
 
@@ -162,7 +162,7 @@ def task_to_dict(task: BatchTask) -> Dict:
         "config": {
             "batch_size": task.batch_size,
             "concurrency": task.concurrency,
-            "use_asr": task.use_asr
+            "return_audio": task.return_audio
         }
     }
 
@@ -225,7 +225,7 @@ async def _process_batch(
     urls: List[str],
     batch_index: int,
     concurrency: int,
-    use_asr: bool
+    return_audio: bool
 ) -> List[Dict]:
     """处理一批视频"""
     from fetcher import fetch_subtitles_single
@@ -242,7 +242,7 @@ async def _process_batch(
                         None,
                         fetch_subtitles_single,
                         url,
-                        use_asr
+                        return_audio
                     ),
                     timeout=90  # 每个视频最多90秒
                 )
@@ -333,7 +333,7 @@ async def _execute_task(task_id: str):
                 batch_urls,
                 batch_index,
                 task.concurrency,
-                task.use_asr
+                task.return_audio
             )
 
             # 批次间短暂延迟，避免请求过快

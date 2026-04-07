@@ -20,16 +20,17 @@ app = FastAPI(title="Subtitle Fetcher API")
 
 class SubtitleRequest(BaseModel):
     url: str
-    use_asr: bool = Field(default=True, description="是否使用ASR兜底（仅B站无字幕视频）")
+    return_audio: bool = Field(default=True, description="无字幕时是否返回音频base64，默认true")
 
 
 class SubtitleResponse(BaseModel):
     title: str
     platform: str
     duration: float
-    language: str
-    source: str  # "cc" | "asr" | "ai_subtitle"
-    subtitles: str
+    language: Optional[str] = None
+    source: str  # "cc" | "audio" | "none"
+    subtitles: Optional[str] = None
+    audio_base64: Optional[str] = None
 
 
 class ErrorResponse(BaseModel):
@@ -41,7 +42,7 @@ class ErrorResponse(BaseModel):
 class BatchSubtitleRequest(BaseModel):
     urls: List[str] = Field(..., description="视频URL列表，最多20条")
     concurrency: int = Field(default=3, ge=1, le=5, description="并发数，默认3，最大5")
-    use_asr: bool = Field(default=True, description="是否使用ASR兜底（仅B站无字幕视频）")
+    return_audio: bool = Field(default=True, description="无字幕时是否返回音频base64，默认true")
 
 
 class BatchResultItem(BaseModel):
@@ -51,8 +52,9 @@ class BatchResultItem(BaseModel):
     platform: Optional[str] = None
     duration: Optional[float] = None
     language: Optional[str] = None
-    source: Optional[str] = None  # "cc" | "asr" | "ai_subtitle"
+    source: Optional[str] = None  # "cc" | "audio" | "none"
     subtitles: Optional[str] = None
+    audio_base64: Optional[str] = None
     error: Optional[str] = None
     message: Optional[str] = None
 
@@ -69,7 +71,7 @@ class ChannelSubtitleRequest(BaseModel):
     channel_url: str = Field(..., description="频道主页URL，支持 YouTube @handle 和 B站 space.bilibili.com/uid")
     limit: int = Field(default=20, ge=1, le=50, description="获取最近N条视频，默认20，最大50")
     concurrency: int = Field(default=3, ge=1, le=5, description="并发数，默认3")
-    use_asr: bool = Field(default=True, description="是否使用ASR兜底（仅B站无字幕视频）")
+    return_audio: bool = Field(default=True, description="无字幕时是否返回音频base64，默认true")
 
 
 class ChannelSubtitleResponse(BaseModel):
@@ -86,17 +88,15 @@ class ChannelExportRequest(BaseModel):
     channel_url: str = Field(..., description="频道主页URL")
     limit: int = Field(default=20, ge=1, le=50, description="获取最近N条视频")
     format: str = Field(default="zip", description="导出格式：zip、json、txt、md")
-    return_audio: bool = Field(default=False, description="是否返回音频，默认否")
+    return_audio: bool = Field(default=False, description="是否返回音频base64，默认否")
     concurrency: int = Field(default=3, ge=1, le=5, description="并发数")
-    use_asr: bool = Field(default=True, description="是否使用ASR兜底")
 
 
 class BatchExportRequest(BaseModel):
     urls: List[str] = Field(..., description="视频URL列表，最多20条")
     format: str = Field(default="zip", description="导出格式：zip、json、txt、md")
-    return_audio: bool = Field(default=False, description="是否返回音频，默认否")
+    return_audio: bool = Field(default=False, description="是否返回音频base64，默认否")
     concurrency: int = Field(default=3, ge=1, le=5, description="并发数")
-    use_asr: bool = Field(default=True, description="是否使用ASR兜底")
 
 
 # Search API models
@@ -134,11 +134,13 @@ def get_subtitles(request: SubtitleRequest):
     """
     Fetch subtitles from video URL.
 
-    Supports YouTube and Bilibili videos. For Bilibili videos without CC subtitles,
-    will use DashScope ASR if use_asr=True and DASHSCOPE_API_KEY is set.
+    Supports YouTube and Bilibili videos.
+    - Has CC subtitles: source="cc", subtitles=text
+    - No subtitles + return_audio=True: source="audio", audio_base64=data
+    - No subtitles + return_audio=False: source="none"
     """
     try:
-        result = fetch_subtitles(request.url, use_asr=request.use_asr)
+        result = fetch_subtitles(request.url, return_audio=request.return_audio)
         return result
     except ValueError as e:
         error_msg = str(e)
@@ -151,11 +153,6 @@ def get_subtitles(request: SubtitleRequest):
             raise HTTPException(
                 status_code=500,
                 detail={"error": "fetch_failed", "message": "无法获取视频信息，请检查URL"}
-            )
-        elif error_msg.startswith("asr_failed"):
-            raise HTTPException(
-                status_code=500,
-                detail={"error": "asr_failed", "message": f"ASR识别失败: {error_msg[10:]}"}
             )
         else:
             raise HTTPException(
@@ -175,7 +172,9 @@ async def get_subtitles_batch(request: BatchSubtitleRequest):
     Fetch subtitles for multiple URLs concurrently.
 
     Supports up to 20 URLs. Individual failures don't affect overall result.
-    For Bilibili videos without CC subtitles, will use DashScope ASR if use_asr=True.
+    - Has CC subtitles: source="cc", subtitles=text
+    - No subtitles + return_audio=True: source="audio", audio_base64=data
+    - No subtitles + return_audio=False: source="none"
     """
     if len(request.urls) > 20:
         raise HTTPException(
@@ -191,7 +190,7 @@ async def get_subtitles_batch(request: BatchSubtitleRequest):
             seen.add(url)
             unique_urls.append(url)
 
-    result = await fetch_batch_subtitles(unique_urls, request.concurrency, request.use_asr)
+    result = await fetch_batch_subtitles(unique_urls, request.concurrency, request.return_audio)
     return result
 
 
@@ -201,7 +200,9 @@ async def get_channel_subtitles(request: ChannelSubtitleRequest):
     Fetch subtitles from a YouTube channel or Bilibili UP主 page.
 
     Gets recent videos from the channel and fetches their subtitles.
-    For Bilibili videos without CC subtitles, will use DashScope ASR if use_asr=True.
+    - Has CC subtitles: source="cc", subtitles=text
+    - No subtitles + return_audio=True: source="audio", audio_base64=data
+    - No subtitles + return_audio=False: source="none"
     """
     # First, fetch video list from channel
     channel_info = await fetch_channel_videos(request.channel_url, request.limit)
@@ -225,7 +226,7 @@ async def get_channel_subtitles(request: ChannelSubtitleRequest):
         }
 
     # Fetch subtitles for all videos
-    batch_result = await fetch_batch_subtitles(video_urls, request.concurrency, request.use_asr)
+    batch_result = await fetch_batch_subtitles(video_urls, request.concurrency, request.return_audio)
 
     return {
         "channel": channel_info.get("channel", ""),
@@ -254,7 +255,7 @@ async def export_batch_subtitles(request: BatchExportRequest):
     batch_result = await fetch_batch_subtitles(
         request.urls,
         request.concurrency,
-        request.use_asr
+        request.return_audio
     )
 
     results = batch_result["results"]
@@ -348,7 +349,7 @@ async def export_channel_subtitles(request: ChannelExportRequest):
     batch_result = await fetch_batch_subtitles(
         video_urls,
         request.concurrency,
-        request.use_asr
+        request.return_audio
     )
 
     results = batch_result["results"]
@@ -457,7 +458,7 @@ class CreateChannelTaskRequest(BaseModel):
     limit: int = Field(default=50, ge=1, le=100, description="最大获取视频数")
     batch_size: int = Field(default=5, ge=1, le=10, description="每批处理数量")
     concurrency: int = Field(default=3, ge=1, le=5, description="并发数")
-    use_asr: bool = Field(default=True, description="是否使用ASR兜底")
+    return_audio: bool = Field(default=True, description="无字幕时是否返回音频base64")
     auto_start: bool = Field(default=True, description="是否立即开始执行")
 
 
@@ -465,7 +466,7 @@ class CreateBatchTaskRequest(BaseModel):
     urls: List[str] = Field(..., description="视频URL列表，最多100条")
     batch_size: int = Field(default=5, ge=1, le=10, description="每批处理数量")
     concurrency: int = Field(default=3, ge=1, le=5, description="并发数")
-    use_asr: bool = Field(default=True, description="是否使用ASR兜底")
+    return_audio: bool = Field(default=True, description="无字幕时是否返回音频base64")
     auto_start: bool = Field(default=True, description="是否立即开始执行")
 
 
@@ -515,7 +516,7 @@ async def create_channel_task_endpoint(request: CreateChannelTaskRequest):
             video_urls=video_urls,
             batch_size=request.batch_size,
             concurrency=request.concurrency,
-            use_asr=request.use_asr
+            return_audio=request.return_audio
         )
 
         # 自动开始
@@ -555,7 +556,7 @@ async def create_batch_task_endpoint(request: CreateBatchTaskRequest):
         video_urls=unique_urls,
         batch_size=request.batch_size,
         concurrency=request.concurrency,
-        use_asr=request.use_asr
+        return_audio=request.return_audio
     )
 
     # 自动开始
