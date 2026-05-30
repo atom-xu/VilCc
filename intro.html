@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VilCC — 让 AI 看懂视频和社交媒体</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #0a0a0f;
+      --surface: #13131a;
+      --card:    #1a1a24;
+      --border:  #2a2b38;
+      --text:    #e8e9f0;
+      --muted:   #7a7d8c;
+      --accent:  #5b7fff;
+      --green:   #3ecf8e;
+      --yellow:  #f5a623;
+      --purple:  #a78bfa;
+      --pink:    #f472b6;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+      font-size: 16px;
+      line-height: 1.6;
+    }
+
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* ── Nav ── */
+    nav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 40px;
+      height: 60px;
+      background: rgba(10,10,15,0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+    }
+    .nav-logo { font-size: 18px; font-weight: 700; }
+    .nav-logo span { color: var(--accent); }
+    .nav-links { display: flex; gap: 28px; font-size: 14px; color: var(--muted); }
+    .nav-links a { color: var(--muted); transition: color 0.15s; }
+    .nav-links a:hover { color: var(--text); text-decoration: none; }
+    .nav-cta {
+      background: var(--accent);
+      color: #fff;
+      border-radius: 8px;
+      padding: 7px 18px;
+      font-size: 14px;
+      font-weight: 500;
+      transition: opacity 0.15s;
+    }
+    .nav-cta:hover { opacity: 0.85; text-decoration: none; }
+
+    /* ── Hero ── */
+    .hero {
+      text-align: center;
+      padding: 100px 24px 80px;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    .hero-badge {
+      display: inline-block;
+      background: rgba(91,127,255,0.12);
+      border: 1px solid rgba(91,127,255,0.3);
+      color: var(--accent);
+      font-size: 13px;
+      font-weight: 500;
+      padding: 5px 14px;
+      border-radius: 20px;
+      margin-bottom: 28px;
+    }
+    .hero h1 {
+      font-size: clamp(38px, 6vw, 64px);
+      font-weight: 800;
+      line-height: 1.15;
+      letter-spacing: -1.5px;
+      margin-bottom: 24px;
+    }
+    .hero h1 .hl { color: var(--accent); }
+    .hero p {
+      font-size: 18px;
+      color: var(--muted);
+      max-width: 560px;
+      margin: 0 auto 40px;
+      line-height: 1.7;
+    }
+    .hero-btns {
+      display: flex;
+      gap: 14px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+      border-radius: 10px;
+      padding: 13px 28px;
+      font-size: 15px;
+      font-weight: 600;
+      transition: opacity 0.15s;
+    }
+    .btn-primary:hover { opacity: 0.85; text-decoration: none; }
+    .btn-secondary {
+      background: var(--card);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 13px 28px;
+      font-size: 15px;
+      font-weight: 500;
+      transition: border-color 0.15s;
+    }
+    .btn-secondary:hover { border-color: var(--accent); text-decoration: none; }
+
+    /* ── Demo flow ── */
+    .demo-flow {
+      max-width: 680px;
+      margin: 0 auto 100px;
+      padding: 0 24px;
+    }
+    .flow-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 28px 32px;
+      font-size: 15px;
+    }
+    .flow-line {
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      padding: 10px 0;
+    }
+    .flow-line + .flow-line {
+      border-top: 1px solid var(--border);
+    }
+    .flow-arrow {
+      color: var(--accent);
+      font-size: 13px;
+      font-weight: 700;
+      min-width: 56px;
+      padding-top: 1px;
+    }
+    .flow-text { color: var(--muted); }
+    .flow-text strong { color: var(--text); }
+
+    /* ── Section ── */
+    section {
+      max-width: 1040px;
+      margin: 0 auto;
+      padding: 0 24px 100px;
+    }
+    .section-label {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 12px;
+    }
+    .section-title {
+      font-size: clamp(26px, 4vw, 36px);
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      margin-bottom: 14px;
+    }
+    .section-sub {
+      font-size: 16px;
+      color: var(--muted);
+      max-width: 540px;
+      margin-bottom: 48px;
+    }
+
+    /* ── Problem/Solution ── */
+    .ps-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      margin-bottom: 0;
+    }
+    .ps-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 28px 30px;
+    }
+    .ps-card.problem { border-color: rgba(246,102,102,0.25); }
+    .ps-card.solution { border-color: rgba(62,207,142,0.25); }
+    .ps-tag {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+    .ps-card.problem .ps-tag { color: #f66; }
+    .ps-card.solution .ps-tag { color: var(--green); }
+    .ps-item {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 12px;
+      font-size: 15px;
+      color: var(--muted);
+    }
+    .ps-item:last-child { margin-bottom: 0; }
+    .ps-icon { font-size: 16px; flex-shrink: 0; }
+
+    /* ── Scenarios ── */
+    .scenario-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+      gap: 18px;
+    }
+    .scenario-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 26px 28px;
+      transition: border-color 0.2s, transform 0.2s;
+    }
+    .scenario-card:hover {
+      border-color: var(--accent);
+      transform: translateY(-2px);
+    }
+    .scenario-icon {
+      font-size: 28px;
+      margin-bottom: 14px;
+    }
+    .scenario-card h3 {
+      font-size: 16px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .scenario-card p {
+      font-size: 14px;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+    .scenario-card .tag {
+      display: inline-block;
+      margin-top: 14px;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 9px;
+      border-radius: 5px;
+      background: rgba(91,127,255,0.12);
+      color: var(--accent);
+    }
+
+    /* ── Platform support ── */
+    .platform-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 14px;
+    }
+    .platform-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px 16px;
+      text-align: center;
+    }
+    .platform-card .p-icon { font-size: 26px; margin-bottom: 8px; }
+    .platform-card .p-name { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+    .platform-card .p-type { font-size: 12px; color: var(--muted); }
+    .platform-card.ready { border-color: rgba(62,207,142,0.3); }
+    .platform-card.ready .p-name { color: var(--green); }
+    .platform-card.social { border-color: rgba(167,139,250,0.3); }
+    .platform-card.social .p-name { color: var(--purple); }
+
+    /* ── How to use ── */
+    .steps {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      position: relative;
+    }
+    .steps::before {
+      content: "";
+      position: absolute;
+      left: 21px;
+      top: 40px;
+      bottom: 40px;
+      width: 2px;
+      background: linear-gradient(to bottom, var(--accent), var(--purple));
+      opacity: 0.3;
+    }
+    .step {
+      display: flex;
+      gap: 22px;
+      padding: 22px 0;
+    }
+    .step-num {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: var(--card);
+      border: 2px solid var(--accent);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      font-weight: 800;
+      color: var(--accent);
+      flex-shrink: 0;
+      z-index: 1;
+    }
+    .step-body { padding-top: 8px; }
+    .step-body h3 { font-size: 17px; font-weight: 700; margin-bottom: 6px; }
+    .step-body p { font-size: 14px; color: var(--muted); }
+    .step-body code {
+      display: inline-block;
+      margin-top: 8px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 5px 12px;
+      font-size: 13px;
+      font-family: "SF Mono", Menlo, monospace;
+      color: var(--text);
+    }
+
+    /* ── MCP clients ── */
+    .clients-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 12px;
+    }
+    .client-chip {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 14px;
+      font-weight: 500;
+    }
+    .client-chip .dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 6px var(--green);
+      flex-shrink: 0;
+    }
+
+    /* ── CTA ── */
+    .cta-section {
+      text-align: center;
+      padding: 80px 24px 100px;
+      background: radial-gradient(ellipse 60% 50% at 50% 100%, rgba(91,127,255,0.08) 0%, transparent 100%);
+      border-top: 1px solid var(--border);
+    }
+    .cta-section h2 {
+      font-size: clamp(28px, 4vw, 42px);
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      margin-bottom: 16px;
+    }
+    .cta-section p {
+      font-size: 16px;
+      color: var(--muted);
+      margin-bottom: 36px;
+    }
+
+    /* ── Footer ── */
+    footer {
+      text-align: center;
+      padding: 28px;
+      border-top: 1px solid var(--border);
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    /* ── Divider ── */
+    .divider { border: none; border-top: 1px solid var(--border); }
+
+    @media (max-width: 600px) {
+      nav { padding: 0 20px; }
+      .nav-links { display: none; }
+      .ps-grid { grid-template-columns: 1fr; }
+      .hero { padding: 64px 20px 60px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Nav -->
+<nav>
+  <div class="nav-logo">Vil<span>CC</span></div>
+  <div class="nav-links">
+    <a href="#scenarios">使用场景</a>
+    <a href="#platforms">支持平台</a>
+    <a href="#howto">快速上手</a>
+  </div>
+  <a class="nav-cta" href="https://github.com/atom-xu/VilCc" target="_blank">GitHub →</a>
+</nav>
+
+<!-- Hero -->
+<div class="hero">
+  <div class="hero-badge">开源免费 · MCP 协议 · 本地运行</div>
+  <h1>让 AI 真正能<br><span class="hl">看懂视频和帖子</span></h1>
+  <p>VilCC 是一个本地运行的工具，帮你把 YouTube、B站、微博、小红书等平台的内容直接喂给 Claude、Cursor 等 AI，让 AI 替你读完，再给你答案。</p>
+  <div class="hero-btns">
+    <a class="btn-primary" href="https://github.com/atom-xu/VilCc" target="_blank">免费获取</a>
+    <a class="btn-secondary" href="#howto">5 分钟上手 →</a>
+  </div>
+</div>
+
+<!-- Demo flow -->
+<div class="demo-flow">
+  <div class="flow-box">
+    <div class="flow-line">
+      <span class="flow-arrow">你说</span>
+      <span class="flow-text">「帮我总结一下这个 B站视频，提炼三个核心观点」</span>
+    </div>
+    <div class="flow-line">
+      <span class="flow-arrow">Claude</span>
+      <span class="flow-text">调用 VilCC，自动抓取视频字幕</span>
+    </div>
+    <div class="flow-line">
+      <span class="flow-arrow">VilCC</span>
+      <span class="flow-text">返回完整字幕文本给 AI</span>
+    </div>
+    <div class="flow-line">
+      <span class="flow-arrow">结果</span>
+      <span class="flow-text"><strong>整理好的总结出现在你面前</strong>，全程你只说了一句话</span>
+    </div>
+  </div>
+</div>
+
+<!-- Problem / Solution -->
+<section>
+  <div class="section-label">为什么需要 VilCC</div>
+  <div class="section-title">AI 很强，但有一个盲区</div>
+  <p class="section-sub">Claude、GPT 这些 AI 其实不能直接看视频，你得先把内容复制出来才行——这一步就卡住了大多数人。</p>
+  <div class="ps-grid">
+    <div class="ps-card problem">
+      <div class="ps-tag">没有 VilCC 的情况</div>
+      <div class="ps-item"><span class="ps-icon">😩</span> 看完视频，手动整理笔记，再粘到 AI 里提问</div>
+      <div class="ps-item"><span class="ps-icon">😩</span> 视频太长没时间看，但又想知道里面说了什么</div>
+      <div class="ps-item"><span class="ps-icon">😩</span> 想分析某个博主的风格，一条条帖子翻很麻烦</div>
+      <div class="ps-item"><span class="ps-icon">😩</span> 外语视频字幕看不懂，只能自己翻译</div>
+    </div>
+    <div class="ps-card solution">
+      <div class="ps-tag">有了 VilCC</div>
+      <div class="ps-item"><span class="ps-icon">✅</span> 丢一个链接给 AI，它自动读完告诉你重点</div>
+      <div class="ps-item"><span class="ps-icon">✅</span> 一句话让 AI 批量处理整个频道的视频</div>
+      <div class="ps-item"><span class="ps-icon">✅</span> 搜索微博、小红书关键词，AI 帮你分析趋势</div>
+      <div class="ps-item"><span class="ps-icon">✅</span> 外语视频直接出中文字幕，顺便总结</div>
+    </div>
+  </div>
+</section>
+
+<!-- Scenarios -->
+<section id="scenarios">
+  <div class="section-label">使用场景</div>
+  <div class="section-title">你能用它做什么</div>
+  <p class="section-sub">不管是学习、创作、做研究还是追热点，VilCC 都能把"看内容"这一步交给 AI 来做。</p>
+  <div class="scenario-grid">
+
+    <div class="scenario-card">
+      <div class="scenario-icon">🎓</div>
+      <h3>学习 / 提炼知识</h3>
+      <p>把一个 40 分钟的教程视频丢给 AI，让它整理成结构化笔记，标出关键概念和操作步骤。</p>
+      <span class="tag">YouTube · B站</span>
+    </div>
+
+    <div class="scenario-card">
+      <div class="scenario-icon">📊</div>
+      <h3>竞品分析</h3>
+      <p>抓取竞品在 B站或微博的最新内容，让 AI 分析他们在主打什么卖点、用户反应如何。</p>
+      <span class="tag">B站 · 微博</span>
+    </div>
+
+    <div class="scenario-card">
+      <div class="scenario-icon">✍️</div>
+      <h3>内容创作参考</h3>
+      <p>搜索某个话题在小红书上的热门帖子，让 AI 总结爆款内容的标题结构和写作套路。</p>
+      <span class="tag">小红书 · 微博</span>
+    </div>
+
+    <div class="scenario-card">
+      <div class="scenario-icon">🌍</div>
+      <h3>外语视频翻译 / 理解</h3>
+      <p>YouTube 英文演讲或纪录片，直接让 AI 给你中文摘要，或者针对某段内容深入提问。</p>
+      <span class="tag">YouTube</span>
+    </div>
+
+    <div class="scenario-card">
+      <div class="scenario-icon">📡</div>
+      <h3>舆情监控 / 趋势追踪</h3>
+      <p>定期搜索品牌关键词，让 AI 分析近期微博、知乎上大家在讨论什么问题、有什么情绪。</p>
+      <span class="tag">微博 · 知乎</span>
+    </div>
+
+    <div class="scenario-card">
+      <div class="scenario-icon">🎙️</div>
+      <h3>播客 / 访谈整理</h3>
+      <p>长播客视频一键提取文字，AI 帮你做嘉宾观点提炼、金句摘录，省去反复回放的时间。</p>
+      <span class="tag">YouTube · B站</span>
+    </div>
+
+    <div class="scenario-card">
+      <div class="scenario-icon">🔍</div>
+      <h3>博主深度研究</h3>
+      <p>输入一个 UP 主或博主的主页，批量抓取他所有帖子，让 AI 分析他的内容风格和定位。</p>
+      <span class="tag">B站 · 小红书</span>
+    </div>
+
+    <div class="scenario-card">
+      <div class="scenario-icon">🤖</div>
+      <h3>AI 工作流集成</h3>
+      <p>通过 MCP 接口直接嵌入到你的 Claude / Cursor 工作流，无需手动触发，AI 自行决定什么时候调用。</p>
+      <span class="tag">MCP · API</span>
+    </div>
+
+  </div>
+</section>
+
+<!-- Platforms -->
+<section id="platforms">
+  <div class="section-label">支持平台</div>
+  <div class="section-title">覆盖你常用的内容平台</div>
+  <p class="section-sub">视频字幕和社交内容，两条线同时支持。</p>
+  <div class="platform-grid">
+    <div class="platform-card ready">
+      <div class="p-icon">▶️</div>
+      <div class="p-name">YouTube</div>
+      <div class="p-type">视频字幕</div>
+    </div>
+    <div class="platform-card ready">
+      <div class="p-icon">📺</div>
+      <div class="p-name">B站</div>
+      <div class="p-type">视频字幕</div>
+    </div>
+    <div class="platform-card social">
+      <div class="p-icon">📕</div>
+      <div class="p-name">小红书</div>
+      <div class="p-type">帖子搜索</div>
+    </div>
+    <div class="platform-card social">
+      <div class="p-icon">🐦</div>
+      <div class="p-name">微博</div>
+      <div class="p-type">帖子搜索</div>
+    </div>
+    <div class="platform-card social">
+      <div class="p-icon">🎵</div>
+      <div class="p-name">抖音</div>
+      <div class="p-type">视频笔记</div>
+    </div>
+    <div class="platform-card social">
+      <div class="p-icon">▶</div>
+      <div class="p-name">快手</div>
+      <div class="p-type">视频笔记</div>
+    </div>
+    <div class="platform-card social">
+      <div class="p-icon">💡</div>
+      <div class="p-name">知乎</div>
+      <div class="p-type">问答搜索</div>
+    </div>
+    <div class="platform-card social">
+      <div class="p-icon">💬</div>
+      <div class="p-name">贴吧</div>
+      <div class="p-type">帖子搜索</div>
+    </div>
+  </div>
+</section>
+
+<!-- AI Clients -->
+<section>
+  <div class="section-label">兼容性</div>
+  <div class="section-title">支持所有主流 AI 工具</div>
+  <p class="section-sub">管理界面一键配置，配置完重启 AI 客户端就能用，不用改任何代码。</p>
+  <div class="clients-grid">
+    <div class="client-chip"><span class="dot"></span>Claude Desktop</div>
+    <div class="client-chip"><span class="dot"></span>Claude Code</div>
+    <div class="client-chip"><span class="dot"></span>Cursor</div>
+    <div class="client-chip"><span class="dot"></span>VS Code</div>
+    <div class="client-chip"><span class="dot"></span>Windsurf</div>
+    <div class="client-chip"><span class="dot"></span>Trae / MarsCode</div>
+    <div class="client-chip"><span class="dot"></span>通义灵码</div>
+    <div class="client-chip"><span class="dot"></span>OpenClaw</div>
+  </div>
+</section>
+
+<!-- How to use -->
+<section id="howto">
+  <div class="section-label">快速上手</div>
+  <div class="section-title">5 分钟跑起来</div>
+  <p class="section-sub">本地运行，不需要账号，不上传你的数据。</p>
+  <div class="steps">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-body">
+        <h3>下载项目</h3>
+        <p>从 GitHub 下载或 clone 到本地。</p>
+        <code>git clone https://github.com/atom-xu/VilCc.git</code>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-body">
+        <h3>安装依赖</h3>
+        <p>一条命令装好所有需要的 Python 包。</p>
+        <code>pip install -r requirements.txt</code>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-body">
+        <h3>启动服务</h3>
+        <p>启动后会自动在本地开一个管理界面。</p>
+        <code>uvicorn main:app --port 8765</code>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">4</div>
+      <div class="step-body">
+        <h3>打开管理界面，一键配置 AI 客户端</h3>
+        <p>访问 <strong>localhost:8765</strong>，在「Connect to AI」区域点击对应客户端的「一键连接」按钮，配置完重启 AI 客户端即可。</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">5</div>
+      <div class="step-body">
+        <h3>直接让 AI 去抓内容</h3>
+        <p>回到 Claude 或 Cursor，粘贴视频链接告诉 AI 你想干什么，它会自动调用 VilCC。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<div class="cta-section">
+  <h2>现在就让 AI 帮你<br>读完所有内容</h2>
+  <p>开源免费，本地运行，数据不离开你的电脑。</p>
+  <div class="hero-btns">
+    <a class="btn-primary" href="https://github.com/atom-xu/VilCc" target="_blank">GitHub 免费获取</a>
+    <a class="btn-secondary" href="https://github.com/atom-xu/VilCc/blob/main/README_CN.md" target="_blank">查看完整文档</a>
+  </div>
+</div>
+
+<footer>
+  VilCC · 开源项目 · MIT License · <a href="https://github.com/atom-xu/VilCc" target="_blank">GitHub</a>
+</footer>
+
+</body>
+</html>
