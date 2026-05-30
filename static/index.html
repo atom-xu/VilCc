@@ -298,6 +298,104 @@
       text-align: right;
     }
 
+    /* ── Social Platforms ── */
+    .social-notice {
+      background: rgba(245,166,35,0.1);
+      border: 1px solid rgba(245,166,35,0.35);
+      border-radius: 10px;
+      padding: 12px 16px;
+      font-size: 13px;
+      color: var(--yellow);
+      line-height: 1.6;
+    }
+    .social-notice code {
+      display: block;
+      margin-top: 6px;
+      font-size: 12px;
+      font-family: "SF Mono", Menlo, monospace;
+      background: rgba(0,0,0,0.3);
+      border-radius: 5px;
+      padding: 6px 10px;
+      color: var(--text);
+    }
+    .social-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+      gap: 12px;
+    }
+    .social-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .social-card .s-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .social-card .s-name {
+      font-weight: 600;
+      font-size: 14px;
+    }
+    .social-card .s-status {
+      font-size: 11px;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .social-card .s-status.ok { color: var(--green); }
+    .s-cookie-area {
+      display: none;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .s-cookie-area.open { display: flex; }
+    .s-cookie-area textarea {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-size: 11px;
+      font-family: "SF Mono", Menlo, monospace;
+      padding: 7px 10px;
+      resize: vertical;
+      min-height: 72px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .s-cookie-area textarea:focus { border-color: var(--accent); }
+    .s-cookie-area textarea::placeholder { color: var(--muted); }
+    .s-save-btn {
+      background: var(--surface);
+      border: 1px solid var(--accent);
+      color: var(--accent);
+      border-radius: 6px;
+      padding: 5px 12px;
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s;
+      align-self: flex-end;
+    }
+    .s-save-btn:hover { background: rgba(91,127,255,0.12); }
+    .s-save-btn.ok { border-color: var(--green); color: var(--green); }
+    .s-toggle-btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 11px;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .s-toggle-btn:hover { border-color: var(--accent); color: var(--accent); }
+
     /* ── Spinner ── */
     @keyframes spin { to { transform: rotate(360deg); } }
     .spinner {
@@ -352,6 +450,16 @@
       <!-- populated by JS -->
     </div>
     <div id="connect-msg"></div>
+  </section>
+
+  <!-- Social Platforms -->
+  <section id="social-section" style="display:none">
+    <h2>Social Platforms</h2>
+    <div class="social-notice" id="social-unavailable" style="display:none">
+      ⚠ MediaCrawler 未安装，社交媒体功能不可用。请运行：
+      <code>git submodule update --init media_crawler &amp;&amp; pip install -r media_crawler/requirements.txt &amp;&amp; playwright install chromium</code>
+    </div>
+    <div class="social-grid" id="social-grid"><!-- populated by JS --></div>
   </section>
 
   <!-- Quick Test -->
@@ -701,10 +809,89 @@
     setTimeout(() => { el.className = "connect-msg"; }, 5000);
   }
 
+  // ── Social Platforms ───────────────────────────────────────────────────────
+  async function loadSocialStatus() {
+    try {
+      const r = await fetch("/api/social/status");
+      if (!r.ok) return;
+      const d = await r.json();
+
+      document.getElementById("social-section").style.display = "";
+
+      if (!d.available) {
+        document.getElementById("social-unavailable").style.display = "";
+        document.getElementById("social-grid").style.display = "none";
+        return;
+      }
+
+      document.getElementById("social-unavailable").style.display = "none";
+      renderSocialGrid(d.platforms || []);
+    } catch (e) {}
+  }
+
+  function renderSocialGrid(platforms) {
+    const grid = document.getElementById("social-grid");
+    grid.innerHTML = platforms.map(p => {
+      const hasCookie = p.has_cookies;
+      const statusHtml = hasCookie
+        ? `<span class="s-status ok"><span class="dot green"></span>Cookie 已设置</span>`
+        : `<span class="s-status"><span class="dot red"></span>未设置</span>`;
+      return `
+        <div class="social-card" id="sc-${p.id}">
+          <div class="s-header">
+            <div class="s-name">${p.name}</div>
+            <button class="s-toggle-btn" data-sp="${p.id}" onclick="toggleCookieArea('${p.id}', this)">
+              ${hasCookie ? "更新" : "设置"} Cookie
+            </button>
+          </div>
+          <div id="ss-${p.id}">${statusHtml}</div>
+          <div class="s-cookie-area" id="sca-${p.id}">
+            <textarea id="sta-${p.id}" placeholder="粘贴 ${p.name} Cookie 字符串（如 a=1; b=2; ...）"></textarea>
+            <button class="s-save-btn" onclick="saveCookie('${p.id}')">保存</button>
+          </div>
+        </div>`;
+    }).join("");
+  }
+
+  function toggleCookieArea(platformId, btn) {
+    const area = document.getElementById("sca-" + platformId);
+    const isOpen = area.classList.toggle("open");
+    btn.textContent = isOpen ? "取消" : (document.getElementById("ss-" + platformId).querySelector(".ok") ? "更新" : "设置") + " Cookie";
+    if (isOpen) document.getElementById("sta-" + platformId).focus();
+  }
+
+  async function saveCookie(platformId) {
+    const ta = document.getElementById("sta-" + platformId);
+    const cookieStr = ta.value.trim();
+    const saveBtn = document.querySelector(`#sc-${platformId} .s-save-btn`);
+
+    saveBtn.textContent = "保存中…";
+    try {
+      const r = await fetch("/api/social/cookies", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ platform: platformId, cookies: cookieStr }),
+      });
+      if (r.ok) {
+        saveBtn.classList.add("ok"); saveBtn.textContent = "✓ 已保存";
+        setTimeout(async () => {
+          saveBtn.classList.remove("ok"); saveBtn.textContent = "保存";
+          await loadSocialStatus();
+          document.getElementById("sca-" + platformId).classList.remove("open");
+        }, 1500);
+      } else {
+        saveBtn.textContent = "失败，重试";
+      }
+    } catch (e) {
+      saveBtn.textContent = "失败，重试";
+    }
+  }
+
   // ── Init & polling ─────────────────────────────────────────────────────────
   loadStatus();
   loadActivity();
   loadClientStatus();
+  loadSocialStatus();
   setInterval(loadActivity, 10000);
   setInterval(loadStatus, 30000);
 </script>

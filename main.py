@@ -380,7 +380,7 @@ class SocialCookieRequest(BaseModel):
 @app.get("/api/social/status")
 def social_status():
     """Return social platform install and cookie status."""
-    return {"platforms": _social.platform_status()}
+    return {"available": _social.is_available(), "platforms": _social.platform_status()}
 
 @app.post("/api/social/cookies")
 def social_set_cookies(req: SocialCookieRequest):
