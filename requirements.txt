@@ -6,3 +6,4 @@ bilibili-api-python
 youtube-transcript-api
 requests
 mcp
+playwright

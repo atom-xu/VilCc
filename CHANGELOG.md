@@ -1,5 +1,35 @@
 # Changelog
 
+## v0.3.0 — 开发中
+
+### 新增：多平台社交媒体聚合（MediaCrawler 集成）
+
+**支持平台：** 小红书、微博、抖音、快手、B站、知乎、贴吧
+
+**新增 MCP 工具：**
+- `search_social(keyword, platform, limit)` — 在社交平台搜索内容
+- `get_creator_posts(creator_url, platform, limit)` — 获取博主所有帖子
+
+**新增 REST 接口：**
+- `POST /social/search` — 关键词搜索
+- `POST /social/creator` — 博主主页爬取
+- `GET /api/social/status` — 各平台 Cookie 状态
+- `POST /api/social/cookies` — 设置平台 Cookie
+
+**技术方案：**
+- MediaCrawler 作为 git submodule（`media_crawler/`）
+- 全局 asyncio lock 保证 config 安全
+- Playwright + headless Chrome
+
+**安装依赖：**
+```bash
+git submodule update --init media_crawler
+pip install -r media_crawler/requirements.txt
+playwright install chromium
+```
+
+---
+
 ## v0.2.0 — 2026-05-30
 
 ### 项目正式命名为 VilCC

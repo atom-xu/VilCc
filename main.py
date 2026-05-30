@@ -11,6 +11,7 @@ from fastapi import FastAPI, HTTPException, Response
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+import social_crawler as _social
 from fetcher import (
     fetch_subtitles,
     fetch_subtitles_racing,
@@ -359,6 +360,47 @@ def connect_client(client_id: str):
         "config_path": config_path,
         "message": f"已写入配置，请{info['restart']}",
     }
+
+
+# ── Social media crawler routes ───────────────────────────────────────────────
+class SocialSearchRequest(BaseModel):
+    platform: str = Field(default="xhs", description="平台: xhs|weibo|dy|ks|bili|zhihu|tieba")
+    keyword: str = Field(..., description="搜索关键词")
+    limit: int = Field(default=20, ge=1, le=50, description="最多返回条数")
+
+class SocialCreatorRequest(BaseModel):
+    platform: str = Field(default="xhs")
+    creator_url: str = Field(..., description="博主主页 URL")
+    limit: int = Field(default=20, ge=1, le=50)
+
+class SocialCookieRequest(BaseModel):
+    platform: str
+    cookies: str
+
+@app.get("/api/social/status")
+def social_status():
+    """Return social platform install and cookie status."""
+    return {"platforms": _social.platform_status()}
+
+@app.post("/api/social/cookies")
+def social_set_cookies(req: SocialCookieRequest):
+    """Set cookies for a social platform."""
+    _social.set_cookies(req.platform, req.cookies)
+    return {"ok": True, "platform": req.platform}
+
+@app.post("/social/search")
+async def social_search(req: SocialSearchRequest):
+    result = await _social.search(platform=req.platform, keyword=req.keyword, limit=req.limit)
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result)
+    return result
+
+@app.post("/social/creator")
+async def social_creator(req: SocialCreatorRequest):
+    result = await _social.get_creator(platform=req.platform, creator_url=req.creator_url, limit=req.limit)
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result)
+    return result
 
 
 # ── Mount static files (must come after explicit routes) ─────────────────────

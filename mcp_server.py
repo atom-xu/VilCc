@@ -3,6 +3,7 @@ import asyncio
 import json
 import sys
 from typing import Any
+import social_crawler as _sc
 
 from mcp.server.fastmcp import FastMCP
 import fetcher
@@ -119,6 +120,52 @@ async def batch_fetch_subtitles(urls: list[str]) -> str:
     if isinstance(cleaned, dict) and "results" in cleaned:
         cleaned["results"] = [_strip_audio(r) for r in cleaned["results"]]
     return json.dumps(cleaned, ensure_ascii=False, indent=2)
+
+
+# ── Tool 5: search_social ────────────────────────────────────────────────────
+@mcp.tool()
+async def search_social(
+    keyword: str,
+    platform: str = "xhs",
+    limit: int = 20,
+) -> str:
+    """Search for posts/notes on Chinese social media platforms.
+
+    Supports: xhs (小红书), weibo (微博), dy (抖音), ks (快手),
+              bili (B站), zhihu (知乎), tieba (贴吧).
+
+    Args:
+        keyword: Search keyword.
+        platform: Target platform. Defaults to "xhs".
+        limit: Maximum number of results (1-50). Defaults to 20.
+
+    Returns:
+        JSON string with platform, keyword, total, and results list.
+        Each result contains title/content, author, stats, and URL.
+    """
+    result = await _sc.search(platform=platform, keyword=keyword, limit=limit)
+    return json.dumps(result, ensure_ascii=False, indent=2)
+
+
+# ── Tool 6: get_creator_posts ────────────────────────────────────────────────
+@mcp.tool()
+async def get_creator_posts(
+    creator_url: str,
+    platform: str = "xhs",
+    limit: int = 20,
+) -> str:
+    """Get posts from a social media creator's page.
+
+    Args:
+        creator_url: Full URL of the creator's profile/space page.
+        platform: Platform of the creator. Defaults to "xhs".
+        limit: Maximum number of posts to return (1-50). Defaults to 20.
+
+    Returns:
+        JSON string with platform, creator_url, total, and results list.
+    """
+    result = await _sc.get_creator(platform=platform, creator_url=creator_url, limit=limit)
+    return json.dumps(result, ensure_ascii=False, indent=2)
 
 
 # ── entry point ─────────────────────────────────────────────────────────────
