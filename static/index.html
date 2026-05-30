@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VilCC</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0d0d0f;
+      --surface:  #17181c;
+      --border:   #2a2b30;
+      --text:     #e8e9ec;
+      --muted:    #8a8d96;
+      --accent:   #5b7fff;
+      --green:    #3ecf8e;
+      --red:      #f66;
+      --yellow:   #f5a623;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 28px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+    header h1 {
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: -0.3px;
+    }
+    header h1 span { color: var(--accent); }
+    .port-badge {
+      font-size: 12px;
+      color: var(--muted);
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 3px 10px;
+    }
+
+    /* ── Layout ── */
+    main {
+      max-width: 960px;
+      margin: 32px auto;
+      padding: 0 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 28px;
+    }
+
+    section { display: flex; flex-direction: column; gap: 14px; }
+    section h2 {
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    /* ── Status cards ── */
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px 18px;
+    }
+    .card .label {
+      font-size: 11px;
+      color: var(--muted);
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .card .value {
+      font-size: 16px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+    .dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .dot.green  { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .dot.yellow { background: var(--yellow); box-shadow: 0 0 6px var(--yellow); }
+    .dot.red    { background: var(--red); box-shadow: 0 0 6px var(--red); }
+
+    .card .sub {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+
+    /* ── Connect grid ── */
+    .connect-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 12px;
+    }
+    .connect-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      transition: opacity 0.2s;
+    }
+    .connect-card.not-installed { opacity: 0.45; }
+    .connect-card .c-name {
+      font-weight: 600;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .connect-card .c-status {
+      font-size: 11px;
+      color: var(--muted);
+      flex: 1;
+    }
+    .connect-card .c-status.configured { color: var(--green); }
+    .connect-btn {
+      background: var(--surface);
+      border: 1px solid var(--accent);
+      color: var(--accent);
+      border-radius: 7px;
+      padding: 7px 14px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s;
+      width: 100%;
+    }
+    .connect-btn:hover { background: rgba(91,127,255,0.12); }
+    .connect-btn:disabled { opacity: 0.4; cursor: default; }
+    .connect-btn.success { border-color: var(--green); color: var(--green); }
+    .connect-btn.secondary {
+      border-color: var(--border);
+      color: var(--muted);
+      margin-top: 2px;
+    }
+    .connect-btn.secondary:hover { background: rgba(255,255,255,0.04); }
+    .connect-msg {
+      font-size: 12px;
+      margin-top: 8px;
+      padding: 8px 14px;
+      border-radius: 7px;
+      display: none;
+    }
+    .connect-msg.ok  { background: rgba(62,207,142,0.1); color: var(--green); display: block; }
+    .connect-msg.err { background: rgba(255,102,102,0.1); color: var(--red);   display: block; }
+
+    /* ── Quick Test ── */
+    .input-row {
+      display: flex;
+      gap: 10px;
+    }
+    input[type="text"] {
+      flex: 1;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 14px;
+      padding: 9px 14px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    input[type="text"]:focus { border-color: var(--accent); }
+    input[type="text"]::placeholder { color: var(--muted); }
+
+    button {
+      background: var(--accent);
+      border: none;
+      border-radius: 8px;
+      color: #fff;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      padding: 9px 20px;
+      transition: opacity 0.15s;
+      white-space: nowrap;
+    }
+    button:disabled { opacity: 0.45; cursor: default; }
+    button:not(:disabled):hover { opacity: 0.85; }
+
+    .result-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px 18px;
+      display: none;
+    }
+    .result-box.visible { display: block; }
+    .result-box .r-title {
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    .result-box .r-meta {
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 12px;
+    }
+    .result-box .r-preview {
+      font-size: 13px;
+      color: var(--text);
+      white-space: pre-wrap;
+      line-height: 1.6;
+      background: var(--bg);
+      border-radius: 6px;
+      padding: 12px 14px;
+      max-height: 160px;
+      overflow-y: auto;
+    }
+    .result-box.error { border-color: var(--red); }
+    .result-box.error .r-title { color: var(--red); }
+    .r-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .dl-btn {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      border-radius: 7px;
+      padding: 6px 14px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .dl-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .dl-btn.success { border-color: var(--green); color: var(--green); }
+
+    /* ── Activity table ── */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    thead tr { background: var(--bg); }
+    th {
+      text-align: left;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      color: var(--muted);
+      padding: 10px 14px;
+    }
+    td { padding: 10px 14px; border-top: 1px solid var(--border); }
+    tr:last-child td { border-bottom: none; }
+    .status-ok  { color: var(--green); font-weight: 600; }
+    .status-err { color: var(--red);   font-weight: 600; }
+    .platform-tag {
+      display: inline-block;
+      font-size: 11px;
+      padding: 1px 7px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      color: var(--muted);
+    }
+    .empty-row td {
+      text-align: center;
+      color: var(--muted);
+      padding: 24px;
+    }
+    .refresh-note {
+      font-size: 11px;
+      color: var(--muted);
+      text-align: right;
+    }
+
+    /* ── Spinner ── */
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner {
+      display: inline-block;
+      width: 14px; height: 14px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Vil<span>CC</span></h1>
+  <span class="port-badge">port 8765</span>
+</header>
+
+<main>
+
+  <!-- Status cards -->
+  <section>
+    <h2>Status</h2>
+    <div class="cards">
+      <div class="card">
+        <div class="label">Server</div>
+        <div class="value"><span class="dot green"></span> Running</div>
+        <div class="sub" id="uptime-label">uptime —</div>
+      </div>
+      <div class="card">
+        <div class="label">B站 Auth</div>
+        <div class="value" id="bili-status">
+          <span class="dot yellow"></span> Checking…
+        </div>
+        <div class="sub">SESSDATA cookie</div>
+      </div>
+      <div class="card">
+        <div class="label">MCP</div>
+        <div class="value"><span class="dot green"></span> Ready</div>
+        <div class="sub">stdio transport</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Connect -->
+  <section>
+    <h2>Connect to AI</h2>
+    <div class="connect-grid" id="connect-grid">
+      <!-- populated by JS -->
+    </div>
+    <div id="connect-msg"></div>
+  </section>
+
+  <!-- Quick Test -->
+  <section>
+    <h2>Quick Test</h2>
+    <div class="input-row">
+      <input
+        type="text"
+        id="url-input"
+        placeholder="Paste a YouTube or Bilibili video URL…"
+      />
+      <button id="fetch-btn" onclick="doFetch()">Fetch</button>
+    </div>
+    <div class="result-box" id="result-box">
+      <div class="r-title" id="r-title"></div>
+      <div class="r-meta" id="r-meta"></div>
+      <div class="r-preview" id="r-preview"></div>
+      <div class="r-actions" id="r-actions" style="display:none">
+        <button class="dl-btn" id="dl-txt-btn">↓ 下载 TXT</button>
+        <button class="dl-btn" id="dl-json-btn">↓ 下载 JSON</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Recent Activity -->
+  <section>
+    <h2>Recent Activity</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>Title</th>
+          <th>Platform</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody id="activity-tbody">
+        <tr class="empty-row"><td colspan="4">No activity yet</td></tr>
+      </tbody>
+    </table>
+    <p class="refresh-note" id="refresh-note">Auto-refreshes every 10s</p>
+  </section>
+
+</main>
+
+<script>
+  // ── Utilities ──────────────────────────────────────────────────────────────
+  function truncate(str, n) {
+    if (!str) return "—";
+    return str.length > n ? str.slice(0, n) + "…" : str;
+  }
+
+  function detectPlatform(url) {
+    if (!url) return "—";
+    if (url.includes("bilibili.com") || url.includes("b23.tv")) return "bilibili";
+    if (url.includes("youtube.com") || url.includes("youtu.be")) return "youtube";
+    return "unknown";
+  }
+
+  // ── Status poll ────────────────────────────────────────────────────────────
+  async function loadStatus() {
+    try {
+      const r = await fetch("/api/status");
+      if (!r.ok) return;
+      const d = await r.json();
+
+      document.getElementById("uptime-label").textContent = "uptime " + (d.uptime || "—");
+
+      const biliEl = document.getElementById("bili-status");
+      if (d.bilibili_auth) {
+        biliEl.innerHTML = '<span class="dot green"></span> Authenticated';
+      } else {
+        biliEl.innerHTML = '<span class="dot red"></span> No Cookie';
+      }
+    } catch (e) { /* server might not be up yet */ }
+  }
+
+  // ── Activity poll ──────────────────────────────────────────────────────────
+  async function loadActivity() {
+    try {
+      const r = await fetch("/api/activity");
+      if (!r.ok) return;
+      const d = await r.json();
+      renderActivity(d.entries || []);
+      document.getElementById("refresh-note").textContent =
+        "Last refreshed " + new Date().toLocaleTimeString();
+    } catch (e) {}
+  }
+
+  function renderActivity(entries) {
+    const tbody = document.getElementById("activity-tbody");
+    if (!entries.length) {
+      tbody.innerHTML = '<tr class="empty-row"><td colspan="4">No activity yet</td></tr>';
+      return;
+    }
+    tbody.innerHTML = entries.map(e => {
+      const platform = detectPlatform(e.url);
+      const statusHtml = e.status === "ok"
+        ? '<span class="status-ok">&#10003;</span>'
+        : '<span class="status-err">&#10007;</span>';
+      const title = truncate(e.title || e.url, 55);
+      return `<tr>
+        <td>${e.time || "—"}</td>
+        <td title="${(e.title || e.url || "").replace(/"/g, "&quot;")}">${title}</td>
+        <td><span class="platform-tag">${platform}</span></td>
+        <td>${statusHtml}</td>
+      </tr>`;
+    }).join("");
+  }
+
+  // ── Download helpers ───────────────────────────────────────────────────────
+  let _lastFetchData = null;
+
+  function safeFilename(title) {
+    return (title || "subtitles").replace(/[\\/:*?"<>|]/g, "_").slice(0, 80);
+  }
+
+  function triggerDownload(content, filename, mime) {
+    const blob = new Blob([content], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  document.getElementById("dl-txt-btn").addEventListener("click", function() {
+    if (!_lastFetchData) return;
+    const d = _lastFetchData;
+    const lines = [
+      d.title || "",
+      `平台: ${d.platform || ""}  时长: ${Math.round(d.duration || 0)}s  日期: ${d.upload_date || ""}  语言: ${d.language || ""}`,
+      "",
+      d.subtitles || "(无字幕)",
+    ];
+    triggerDownload(lines.join("\n"), safeFilename(d.title) + ".txt", "text/plain;charset=utf-8");
+    this.classList.add("success"); this.textContent = "✓ 已下载";
+    setTimeout(() => { this.classList.remove("success"); this.textContent = "↓ 下载 TXT"; }, 2000);
+  });
+
+  document.getElementById("dl-json-btn").addEventListener("click", function() {
+    if (!_lastFetchData) return;
+    const content = JSON.stringify(_lastFetchData, null, 2);
+    triggerDownload(content, safeFilename(_lastFetchData.title) + ".json", "application/json");
+    this.classList.add("success"); this.textContent = "✓ 已下载";
+    setTimeout(() => { this.classList.remove("success"); this.textContent = "↓ 下载 JSON"; }, 2000);
+  });
+
+  // ── Quick Test fetch ───────────────────────────────────────────────────────
+  async function doFetch() {
+    const urlInput = document.getElementById("url-input");
+    const btn = document.getElementById("fetch-btn");
+    const box = document.getElementById("result-box");
+    const url = urlInput.value.trim();
+    if (!url) return;
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span>Fetching…';
+    box.className = "result-box";
+    box.style.display = "none";
+
+    try {
+      const resp = await fetch("/subtitles", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url, return_audio: false }),
+      });
+
+      box.classList.add("visible");
+
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ detail: { message: resp.statusText } }));
+        const msg = (err.detail && err.detail.message) || JSON.stringify(err);
+        box.classList.add("error");
+        document.getElementById("r-title").textContent = "Error " + resp.status;
+        document.getElementById("r-meta").textContent = "";
+        document.getElementById("r-preview").textContent = msg;
+        return;
+      }
+
+      const data = await resp.json();
+      _lastFetchData = data;
+
+      document.getElementById("r-title").textContent = data.title || "(no title)";
+      const metaParts = [];
+      if (data.platform) metaParts.push(data.platform);
+      if (data.upload_date) metaParts.push(data.upload_date);
+      if (data.duration) metaParts.push(Math.round(data.duration) + "s");
+      if (data.language) metaParts.push("lang: " + data.language);
+      if (data.source) metaParts.push("source: " + data.source);
+      document.getElementById("r-meta").textContent = metaParts.join("  ·  ");
+
+      const subs = data.subtitles;
+      document.getElementById("r-preview").textContent =
+        subs ? subs.slice(0, 200) + (subs.length > 200 ? "\n…" : "") : "(no subtitles)";
+
+      // Show download buttons only when subtitles are available
+      document.getElementById("r-actions").style.display = subs ? "flex" : "none";
+
+      // Refresh activity after a small delay so the log is updated
+      setTimeout(loadActivity, 300);
+
+    } catch (e) {
+      box.classList.add("visible", "error");
+      document.getElementById("r-title").textContent = "Network error";
+      document.getElementById("r-meta").textContent = "";
+      document.getElementById("r-preview").textContent = String(e);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Fetch";
+    }
+  }
+
+  // ── Allow Enter key in input ───────────────────────────────────────────────
+  document.getElementById("url-input").addEventListener("keydown", e => {
+    if (e.key === "Enter") doFetch();
+  });
+
+  // ── Connect to AI clients ──────────────────────────────────────────────────
+  const _serverName = "vilcc";
+  let _mcpCfgRaw = null;
+
+  async function loadClientStatus() {
+    try {
+      const [statusRes, cfgRes] = await Promise.all([
+        fetch("/api/client-status"),
+        fetch("/api/mcp-config"),
+      ]);
+      const { clients } = await statusRes.json();
+      _mcpCfgRaw = await cfgRes.json();
+      renderConnectCards(clients, _mcpCfgRaw);
+    } catch(e) {}
+  }
+
+  function renderConnectCards(clients, cfg) {
+    const grid = document.getElementById("connect-grid");
+    const configJson = JSON.stringify({ command: cfg.command, args: cfg.args }, null, 2);
+    const b64 = btoa(unescape(encodeURIComponent(JSON.stringify({ command: cfg.command, args: cfg.args }))));
+
+    let html = "";
+    clients.forEach(c => {
+      const notInstalled = !c.installed;
+      const configured = c.configured;
+
+      let statusHtml = "";
+      let btnHtml = "";
+
+      if (!c.installed) {
+        statusHtml = `<div class="c-status">未安装</div>`;
+        btnHtml = `<button class="connect-btn" disabled>未检测到</button>`;
+      } else if (c.ui_only) {
+        statusHtml = `<div class="c-status" style="white-space:normal">${c.ui_hint || '需在插件内手动配置'}</div>`;
+        btnHtml = `<button class="connect-btn" data-copy-ui>复制配置 JSON</button>`;
+      } else if (configured) {
+        statusHtml = `<div class="c-status configured">✓ 已连接</div>`;
+        btnHtml = `<button class="connect-btn success" disabled>✓ 已配置</button>`;
+      } else {
+        statusHtml = `<div class="c-status">已安装，未连接</div>`;
+        btnHtml = `<button class="connect-btn" data-client="${c.id}">一键连接</button>`;
+      }
+
+      // Deep link secondary button for Cursor / VS Code
+      let deepLinkBtn = "";
+      if (c.deep_link && c.installed && !configured) {
+        let deepUrl = c.deep_link;
+        if (c.id === "cursor") {
+          deepUrl += `?name=${encodeURIComponent(cfg.name)}&config=${encodeURIComponent(b64)}`;
+        } else if (c.id === "vscode") {
+          deepUrl += `?name=${encodeURIComponent(cfg.name)}&config=${encodeURIComponent(b64)}`;
+        }
+        deepLinkBtn = `<button class="connect-btn secondary" data-deeplink="${deepUrl}">在 ${c.label} 中安装</button>`;
+      }
+
+      html += `
+        <div class="connect-card${notInstalled ? " not-installed" : ""}">
+          <div class="c-name">${c.label}</div>
+          ${statusHtml}
+          ${btnHtml}
+          ${deepLinkBtn}
+        </div>`;
+    });
+
+    // Always show "其他工具" card for copy-config
+    html += `
+      <div class="connect-card">
+        <div class="c-name">其他工具</div>
+        <div class="c-status">Windsurf · Cline · Continue 等</div>
+        <button class="connect-btn" id="copy-cfg-btn">复制配置 JSON</button>
+      </div>`;
+
+    grid.innerHTML = html;
+
+    // Wire up one-click connect buttons
+    grid.querySelectorAll("[data-client]").forEach(btn => {
+      btn.addEventListener("click", async function() {
+        const clientId = this.dataset.client;
+        this.disabled = true; this.textContent = "写入中…";
+        try {
+          const r = await fetch(`/api/connect/${clientId}`, { method: "POST" });
+          const d = await r.json();
+          this.classList.add("success"); this.textContent = "✓ 已写入";
+          showMsg(d.message, "ok");
+          // Refresh after 1.5s to show new configured state
+          setTimeout(loadClientStatus, 1500);
+        } catch(e) {
+          this.disabled = false; this.textContent = "一键连接";
+          showMsg("写入失败：" + e, "err");
+        }
+      });
+    });
+
+    // Wire up deep link buttons
+    grid.querySelectorAll("[data-deeplink]").forEach(btn => {
+      btn.addEventListener("click", function() {
+        window.location.href = this.dataset.deeplink;
+      });
+    });
+
+    // Wire up UI-only copy buttons (e.g. 通义灵码)
+    grid.querySelectorAll("[data-copy-ui]").forEach(btn => {
+      btn.addEventListener("click", function() {
+        const snippet = JSON.stringify({ mcpServers: { [_serverName]: { command: cfg.command, args: cfg.args } } }, null, 2);
+        navigator.clipboard.writeText(snippet).then(() => {
+          this.classList.add("success"); this.textContent = "✓ 已复制，去插件中粘贴";
+          setTimeout(() => { this.classList.remove("success"); this.textContent = "复制配置 JSON"; }, 3000);
+        });
+      });
+    });
+
+    // Wire up copy-config button
+    const copyBtn = document.getElementById("copy-cfg-btn");
+    if (copyBtn) {
+      copyBtn.addEventListener("click", function() {
+        navigator.clipboard.writeText(configJson).then(() => {
+          this.classList.add("success"); this.textContent = "✓ 已复制";
+          setTimeout(() => { this.classList.remove("success"); this.textContent = "复制配置 JSON"; }, 2000);
+        });
+      });
+    }
+  }
+
+  function showMsg(msg, type) {
+    const el = document.getElementById("connect-msg");
+    el.textContent = msg;
+    el.className = "connect-msg " + type;
+    setTimeout(() => { el.className = "connect-msg"; }, 5000);
+  }
+
+  // ── Init & polling ─────────────────────────────────────────────────────────
+  loadStatus();
+  loadActivity();
+  loadClientStatus();
+  setInterval(loadActivity, 10000);
+  setInterval(loadStatus, 30000);
+</script>
+</body>
+</html>

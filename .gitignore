@@ -41,6 +41,9 @@ Thumbs.db
 .env
 .env.local
 
+# Browser cookies
+cookies.txt
+
 # Project specific
 *.log
 *.bak

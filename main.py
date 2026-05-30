@@ -1,21 +1,34 @@
 """FastAPI service for subtitle fetching."""
 import asyncio
 import io
+import os
+import sys
+import time
+from collections import deque
+from datetime import datetime, timezone
 from typing import List, Optional
 from fastapi import FastAPI, HTTPException, Response
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from fetcher import (
     fetch_subtitles,
+    fetch_subtitles_racing,
     fetch_batch_subtitles,
     fetch_channel_videos,
     create_zip_export,
     generate_txt_content,
     safe_filename,
-    search_videos
+    search_videos,
+    has_bilibili_cookies,
 )
 
-app = FastAPI(title="Subtitle Fetcher API")
+app = FastAPI(title="VilCC API")
+
+# ── Activity log ─────────────────────────────────────────────────────────────
+# Keeps the last 50 entries; each entry: {time, url, title, status, source}
+_activity_log: deque = deque(maxlen=50)
+_start_time: float = time.monotonic()
 
 
 class SubtitleRequest(BaseModel):
@@ -27,9 +40,11 @@ class SubtitleResponse(BaseModel):
     title: str
     platform: str
     duration: float
+    upload_date: Optional[str] = None  # YYYYMMDD
     language: Optional[str] = None
     source: str  # "cc" | "audio" | "none"
     subtitles: Optional[str] = None
+    segments: Optional[List] = None  # [{start, end, text}] with timestamps
     audio_base64: Optional[str] = None
 
 
@@ -129,8 +144,232 @@ def health_check():
     return {"status": "ok"}
 
 
+# ── Dashboard routes ──────────────────────────────────────────────────────────
+
+@app.get("/", include_in_schema=False)
+def dashboard():
+    """Serve the management dashboard."""
+    return FileResponse(os.path.join(os.path.dirname(__file__), "static", "index.html"))
+
+
+@app.get("/api/status")
+def api_status():
+    """Return server status summary."""
+    uptime_seconds = int(time.monotonic() - _start_time)
+    hours, remainder = divmod(uptime_seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    uptime_str = f"{hours}h {minutes}m {seconds}s"
+    return {
+        "uptime": uptime_str,
+        "uptime_seconds": uptime_seconds,
+        "bilibili_auth": has_bilibili_cookies(),
+        "recent_count": len(_activity_log),
+        "server_version": "1.0.0",
+    }
+
+
+@app.get("/api/activity")
+def api_activity():
+    """Return last 20 activity log entries (newest first)."""
+    entries = list(_activity_log)
+    return {"entries": list(reversed(entries))[:20]}
+
+
+import json as _json
+
+_SERVER_NAME = "vilcc"
+_MCP_ENTRY_KEY = "mcpServers"
+
+# Config paths and display names for each supported AI client
+_CLIENTS = {
+    "claude-desktop": {
+        "label": "Claude Desktop",
+        "config": "~/Library/Application Support/Claude/claude_desktop_config.json",
+        "install_check": "~/Library/Application Support/Claude",
+        "restart": "重启 Claude Desktop",
+        "deep_link": None,
+    },
+    "claude-code": {
+        "label": "Claude Code",
+        "config": "~/.claude/settings.json",
+        "install_check": "~/.claude",
+        "restart": "重新加载 Claude Code",
+        "deep_link": None,
+    },
+    "cursor": {
+        "label": "Cursor",
+        "config": "~/.cursor/mcp.json",
+        "install_check": "~/.cursor",
+        "restart": "重启 Cursor",
+        "deep_link": "cursor://anysphere.cursor-deeplink/mcp/install",
+    },
+    "vscode": {
+        "label": "VS Code",
+        "config": "~/Library/Application Support/Code/User/mcp.json",
+        "install_check": "~/Library/Application Support/Code",
+        "restart": "重启 VS Code",
+        "deep_link": "vscode://vscode.mcp/install",
+    },
+    "windsurf": {
+        "label": "Windsurf",
+        "config": "~/.codeium/windsurf/mcp_config.json",
+        "install_check": "~/.codeium/windsurf",
+        "restart": "重启 Windsurf",
+        "deep_link": None,
+    },
+    "trae": {
+        # Trae IDE (ByteDance) — also covers 豆包 MarsCode which merged into Trae
+        "label": "Trae / MarsCode",
+        "config": "~/Library/Application Support/Trae/User/mcp.json",
+        "install_check": "~/Library/Application Support/Trae",
+        "restart": "重启 Trae",
+        "deep_link": None,
+    },
+    "lingma": {
+        # 通义灵码 has no config file — MCP is configured through the plugin UI only
+        "label": "通义灵码",
+        "config": None,
+        "install_check": "~/.lingma",
+        "ui_only": True,
+        "ui_hint": "头像 → 个人设置 → MCP服务 → 粘贴 JSON",
+        "restart": "",
+        "deep_link": None,
+    },
+    "openclaw": {
+        # OpenClaw uses ~/.openclaw/openclaw.json with nested mcp.servers (not mcpServers)
+        "label": "OpenClaw",
+        "config": "~/.openclaw/openclaw.json",
+        "install_check": "~/.openclaw",
+        "config_key": ["mcp", "servers"],
+        "restart": "openclaw gateway restart",
+        "deep_link": None,
+    },
+}
+
+
+def _mcp_entry():
+    return {
+        "command": sys.executable,
+        "args": [os.path.join(os.path.dirname(os.path.abspath(__file__)), "mcp_server.py")],
+    }
+
+
+def _read_config(path: str) -> dict:
+    if os.path.exists(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return _json.load(f)
+        except Exception:
+            pass
+    return {}
+
+
+def _write_config(path: str, data: dict):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        _json.dump(data, f, indent=2, ensure_ascii=False)
+
+
+def _is_configured(config: dict, config_key: list = None) -> bool:
+    if config_key is None:
+        config_key = [_MCP_ENTRY_KEY]
+    current = config
+    for key in config_key[:-1]:
+        if not isinstance(current, dict):
+            return False
+        current = current.get(key, {})
+    servers = current.get(config_key[-1]) if isinstance(current, dict) else {}
+    servers = servers or {}
+    # Also check legacy "servers" key for standard-format clients
+    if not servers and config_key == [_MCP_ENTRY_KEY]:
+        servers = config.get("servers") or {}
+    return _SERVER_NAME in servers
+
+
+@app.get("/api/mcp-config")
+def api_mcp_config():
+    """Return MCP server config for deep link generation."""
+    entry = _mcp_entry()
+    return {"command": entry["command"], "args": entry["args"], "name": _SERVER_NAME}
+
+
+@app.get("/api/client-status")
+def api_client_status():
+    """Detect which AI clients are installed and whether MCP is configured in each."""
+    results = []
+    for client_id, info in _CLIENTS.items():
+        ui_only = info.get("ui_only", False)
+        config_path_raw = info.get("config")
+        config_path = os.path.expanduser(config_path_raw) if config_path_raw else None
+        fallback_check = os.path.dirname(config_path) if config_path else ""
+        check_path = os.path.expanduser(info.get("install_check", fallback_check))
+        installed = bool(
+            (check_path and (os.path.isdir(check_path) or os.path.exists(check_path)))
+            or (config_path and os.path.exists(config_path))
+        )
+        if ui_only:
+            configured = False
+        else:
+            config = _read_config(config_path) if (installed and config_path) else {}
+            config_key = info.get("config_key", [_MCP_ENTRY_KEY])
+            configured = _is_configured(config, config_key) if installed else False
+        results.append({
+            "id": client_id,
+            "label": info["label"],
+            "installed": installed,
+            "configured": configured,
+            "ui_only": ui_only,
+            "ui_hint": info.get("ui_hint", ""),
+            "restart_hint": info.get("restart", ""),
+            "deep_link": info.get("deep_link"),
+        })
+    return {"clients": results}
+
+
+@app.post("/api/connect/{client_id}")
+def connect_client(client_id: str):
+    """Write MCP config for the specified AI client."""
+    if client_id not in _CLIENTS:
+        raise HTTPException(status_code=404, detail="Unknown client")
+
+    info = _CLIENTS[client_id]
+
+    if info.get("ui_only"):
+        raise HTTPException(
+            status_code=422,
+            detail={"message": f"请手动配置：{info.get('ui_hint', '')}", "ui_only": True},
+        )
+
+    config_path = os.path.expanduser(info["config"])
+    config = _read_config(config_path)
+    config_key = info.get("config_key", [_MCP_ENTRY_KEY])
+
+    # Navigate / create nested path (e.g. ["mcp", "servers"] for OpenClaw)
+    current = config
+    for key in config_key[:-1]:
+        current.setdefault(key, {})
+        current = current[key]
+    current.setdefault(config_key[-1], {})
+    current[config_key[-1]][_SERVER_NAME] = _mcp_entry()
+
+    _write_config(config_path, config)
+
+    return {
+        "ok": True,
+        "config_path": config_path,
+        "message": f"已写入配置，请{info['restart']}",
+    }
+
+
+# ── Mount static files (must come after explicit routes) ─────────────────────
+_static_dir = os.path.join(os.path.dirname(__file__), "static")
+app.mount("/static", StaticFiles(directory=_static_dir), name="static")
+
+
+# ── Subtitle endpoint ─────────────────────────────────────────────────────────
+
 @app.post("/subtitles", response_model=SubtitleResponse)
-def get_subtitles(request: SubtitleRequest):
+async def get_subtitles(request: SubtitleRequest):
     """
     Fetch subtitles from video URL.
 
@@ -138,18 +377,40 @@ def get_subtitles(request: SubtitleRequest):
     - Has CC subtitles: source="cc", subtitles=text
     - No subtitles + return_audio=True: source="audio", audio_base64=data
     - No subtitles + return_audio=False: source="none"
+
+    Uses racing strategy: fast path (platform API) and yt-dlp run simultaneously.
+    First valid CC result wins; if both fail, falls back to audio/ASR.
     """
+    _log_time = datetime.now(timezone.utc).strftime("%H:%M:%S")
+    _log_url = request.url
     try:
-        result = fetch_subtitles(request.url, return_audio=request.return_audio)
+        result = await asyncio.wait_for(
+            fetch_subtitles_racing(request.url, request.return_audio),
+            timeout=90.0
+        )
+        _activity_log.append({
+            "time": _log_time,
+            "url": _log_url,
+            "title": result.get("title", ""),
+            "status": "ok",
+            "source": result.get("source", ""),
+        })
         return result
+    except asyncio.TimeoutError:
+        _activity_log.append({"time": _log_time, "url": _log_url, "title": "", "status": "error", "source": "timeout"})
+        raise HTTPException(
+            status_code=504,
+            detail={"error": "timeout", "message": "请求超时，请稍后重试"}
+        )
     except ValueError as e:
         error_msg = str(e)
-        if error_msg.startswith("no_subtitles"):
+        _activity_log.append({"time": _log_time, "url": _log_url, "title": "", "status": "error", "source": error_msg[:30]})
+        if "no_subtitles" in error_msg:
             raise HTTPException(
                 status_code=422,
                 detail={"error": "no_subtitles", "message": "该视频没有可用字幕"}
             )
-        elif error_msg.startswith("fetch_failed"):
+        elif "fetch_failed" in error_msg:
             raise HTTPException(
                 status_code=500,
                 detail={"error": "fetch_failed", "message": "无法获取视频信息，请检查URL"}
@@ -160,6 +421,7 @@ def get_subtitles(request: SubtitleRequest):
                 detail={"error": "unknown", "message": error_msg}
             )
     except Exception as e:
+        _activity_log.append({"time": _log_time, "url": _log_url, "title": "", "status": "error", "source": "exception"})
         raise HTTPException(
             status_code=500,
             detail={"error": "fetch_failed", "message": f"无法获取视频信息，请检查URL: {str(e)}"}
@@ -414,7 +676,7 @@ async def export_channel_subtitles(request: ChannelExportRequest):
 # ==================== Search Endpoint ====================
 
 @app.post("/search", response_model=SearchResponse)
-def search_videos_endpoint(request: SearchRequest):
+async def search_videos_endpoint(request: SearchRequest):
     """
     Search videos on YouTube or Bilibili.
 
@@ -427,14 +689,24 @@ def search_videos_endpoint(request: SearchRequest):
             detail={"error": "limit_too_large", "message": "limit不能超过20"}
         )
 
+    import asyncio
+    loop = asyncio.get_event_loop()
     try:
-        results = search_videos(request.query, request.platform, request.limit)
+        results = await asyncio.wait_for(
+            loop.run_in_executor(None, search_videos, request.query, request.platform, request.limit),
+            timeout=60.0
+        )
         return {
             "query": request.query,
             "platform": request.platform,
             "total": len(results),
             "results": results
         }
+    except asyncio.TimeoutError:
+        raise HTTPException(
+            status_code=504,
+            detail={"error": "timeout", "message": "搜索超时，请稍后重试"}
+        )
     except Exception as e:
         raise HTTPException(
             status_code=500,
@@ -459,6 +731,8 @@ class CreateChannelTaskRequest(BaseModel):
     batch_size: int = Field(default=5, ge=1, le=10, description="每批处理数量")
     concurrency: int = Field(default=3, ge=1, le=5, description="并发数")
     return_audio: bool = Field(default=True, description="无字幕时是否返回音频base64")
+    use_asr: bool = Field(default=False, description="无字幕时是否使用DashScope ASR转文字（需配置DASHSCOPE_API_KEY）")
+    batch_delay: float = Field(default=2.0, ge=0.0, le=120.0, description="批次间基础延迟（秒），建议B站任务设为5-10")
     auto_start: bool = Field(default=True, description="是否立即开始执行")
 
 
@@ -467,6 +741,8 @@ class CreateBatchTaskRequest(BaseModel):
     batch_size: int = Field(default=5, ge=1, le=10, description="每批处理数量")
     concurrency: int = Field(default=3, ge=1, le=5, description="并发数")
     return_audio: bool = Field(default=True, description="无字幕时是否返回音频base64")
+    use_asr: bool = Field(default=False, description="无字幕时是否使用DashScope ASR转文字（需配置DASHSCOPE_API_KEY）")
+    batch_delay: float = Field(default=2.0, ge=0.0, le=120.0, description="批次间基础延迟（秒），建议B站任务设为5-10")
     auto_start: bool = Field(default=True, description="是否立即开始执行")
 
 
@@ -499,10 +775,17 @@ async def create_channel_task_endpoint(request: CreateChannelTaskRequest):
     4. 完成后导出结果
     """
     try:
-        # 先获取视频列表
-        from batch_executor import _fetch_video_list
-        video_urls = await _fetch_video_list(request.channel_url, limit=request.limit)
+        # 先获取视频列表（优先使用 bilibili_api 以规避 yt-dlp 的 B 站风控）
+        from fetcher import fetch_channel_videos
+        channel_info = await fetch_channel_videos(request.channel_url, limit=request.limit)
 
+        if "error" in channel_info:
+            raise HTTPException(
+                status_code=422,
+                detail={"error": channel_info["error"], "message": channel_info.get("message", "无法获取频道视频列表")}
+            )
+
+        video_urls = channel_info.get("video_urls", [])
         if not video_urls:
             raise HTTPException(
                 status_code=422,
@@ -516,7 +799,9 @@ async def create_channel_task_endpoint(request: CreateChannelTaskRequest):
             video_urls=video_urls,
             batch_size=request.batch_size,
             concurrency=request.concurrency,
-            return_audio=request.return_audio
+            return_audio=request.return_audio,
+            use_asr=request.use_asr,
+            batch_delay=request.batch_delay
         )
 
         # 自动开始
@@ -556,7 +841,9 @@ async def create_batch_task_endpoint(request: CreateBatchTaskRequest):
         video_urls=unique_urls,
         batch_size=request.batch_size,
         concurrency=request.concurrency,
-        return_audio=request.return_audio
+        return_audio=request.return_audio,
+        use_asr=request.use_asr,
+        batch_delay=request.batch_delay
     )
 
     # 自动开始

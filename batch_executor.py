@@ -49,6 +49,9 @@ class BatchTask:
     batch_size: int = 5  # 每批处理数量
     concurrency: int = 3
     return_audio: bool = True
+    use_asr: bool = False
+    batch_delay: float = 2.0  # 批次间基础延迟（秒）
+    current_delay: float = 2.0  # 当前动态延迟（秒）
     # 进度追踪
     current_batch: int = 0
     total_batches: int = 0
@@ -66,7 +69,9 @@ def create_task(
     video_urls: Optional[List[str]] = None,
     batch_size: int = 5,
     concurrency: int = 3,
-    return_audio: bool = True
+    return_audio: bool = True,
+    batch_delay: float = 2.0,
+    use_asr: bool = False
 ) -> BatchTask:
     """
     创建新的批处理任务
@@ -95,6 +100,9 @@ def create_task(
         batch_size=batch_size,
         concurrency=concurrency,
         return_audio=return_audio,
+        use_asr=use_asr,
+        batch_delay=batch_delay,
+        current_delay=batch_delay,
         total_batches=(len(urls) + batch_size - 1) // batch_size if urls else 0
     )
 
@@ -171,20 +179,24 @@ def task_to_dict(task: BatchTask) -> Dict:
 
 async def _fetch_video_list(channel_url: str, limit: int = 100) -> List[str]:
     """
-    获取频道视频列表（使用yt-dlp，不使用bilibili-api）
+    获取频道视频列表。
+    对 YouTube 使用 yt-dlp；对 B 站优先用 yt-dlp，失败后 fallback 到 bilibili_api。
     """
     import yt_dlp
+    from fetcher import retry_with_backoff, detect_platform
 
-    ydl_opts = {
-        "quiet": True,
-        "no_warnings": True,
-        "skip_download": True,
-        "extract_flat": True,
-        "playlistend": limit,
-        "nocheckcertificate": True,
-    }
+    platform = detect_platform(channel_url)
 
-    try:
+    def _fetch_ytdlp():
+        ydl_opts = {
+            "quiet": True,
+            "no_warnings": True,
+            "skip_download": True,
+            "extract_flat": True,
+            "playlistend": limit,
+            "nocheckcertificate": True,
+        }
+
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(channel_url, download=False)
 
@@ -216,8 +228,34 @@ async def _fetch_video_list(channel_url: str, limit: int = 100) -> List[str]:
             video_urls.append(url)
 
         return video_urls
+
+    # 1. 尝试 yt-dlp
+    try:
+        return retry_with_backoff(
+            _fetch_ytdlp,
+            max_retries=3,
+            base_delay=3.0,
+            on_retry=lambda attempt, exc, delay: print(
+                f"[频道列表风控重试] {channel_url} 第{attempt}次重试，等待{delay:.1f}s"
+            )
+        )
     except Exception as e:
-        raise ValueError(f"无法获取频道视频列表: {str(e)}")
+        yt_error = str(e)
+
+    # 2. B站 fallback：使用 bilibili_api 扒链接
+    if platform == "bilibili":
+        import re
+        uid_match = re.search(r'space\.bilibili\.com/(\d+)', channel_url)
+        if uid_match:
+            uid = int(uid_match.group(1))
+            print(f"[B站Fallback] yt-dlp 拉取失败，尝试 bilibili_api 获取 UID:{uid} 的视频列表")
+            from fetcher import get_bilibili_video_list
+            urls = await get_bilibili_video_list(uid, limit)
+            if urls:
+                return urls
+            yt_error += "; bilibili_api 也未返回视频"
+
+    raise ValueError(f"无法获取频道视频列表: {yt_error}")
 
 
 async def _process_batch(
@@ -225,7 +263,8 @@ async def _process_batch(
     urls: List[str],
     batch_index: int,
     concurrency: int,
-    return_audio: bool
+    return_audio: bool,
+    use_asr: bool = False
 ) -> List[Dict]:
     """处理一批视频"""
     from fetcher import fetch_subtitles_single
@@ -242,9 +281,10 @@ async def _process_batch(
                         None,
                         fetch_subtitles_single,
                         url,
-                        return_audio
+                        return_audio,
+                        use_asr
                     ),
-                    timeout=90  # 每个视频最多90秒
+                    timeout=120  # ASR 可能较慢，放宽到 120 秒
                 )
                 return result
             except asyncio.TimeoutError:
@@ -289,7 +329,7 @@ async def _process_batch(
 
 
 async def _execute_task(task_id: str):
-    """执行任务主逻辑"""
+    """执行任务主逻辑，支持动态延迟以规避风控"""
     task = get_task(task_id)
     if not task:
         return
@@ -302,25 +342,33 @@ async def _execute_task(task_id: str):
             started_at=datetime.now().isoformat()
         )
 
-        # 1. 如果是频道任务，先获取视频列表
+        # 1. 如果是频道任务，先获取视频列表（仅在尚未获取时执行）
         if task.task_type == "channel" and task.channel_url:
-            video_urls = await _fetch_video_list(task.channel_url, limit=100)
-            if not video_urls:
-                raise ValueError("频道中没有找到视频")
+            if task.video_urls:
+                # 创建任务时已经获取过列表，直接使用
+                pass
+            else:
+                video_urls = await _fetch_video_list(task.channel_url, limit=100)
+                if not video_urls:
+                    raise ValueError("频道中没有找到视频")
 
-            _update_task(
-                task_id,
-                video_urls=video_urls,
-                total_videos=len(video_urls),
-                total_batches=(len(video_urls) + task.batch_size - 1) // task.batch_size
-            )
-            task = get_task(task_id)  # 刷新任务对象
+                _update_task(
+                    task_id,
+                    video_urls=video_urls,
+                    total_videos=len(video_urls),
+                    total_batches=(len(video_urls) + task.batch_size - 1) // task.batch_size
+                )
+                task = get_task(task_id)  # 刷新任务对象
 
-        # 2. 分批处理
+        # 2. 分批处理（从上次断点继续，支持 resume）
+        # IMPORTANT: start_index must come from task.current_batch, NOT hardcoded 0.
+        # resume_task() creates a new _execute_task coroutine; if the loop starts at 0
+        # it reprocesses all already-completed videos from the beginning.
         urls = task.video_urls
         batch_size = task.batch_size
+        start_index = task.current_batch * batch_size
 
-        for i in range(0, len(urls), batch_size):
+        for i in range(start_index, len(urls), batch_size):
             # 检查是否被取消
             if task_id not in _task_store or _task_store[task_id].status != TaskStatus.RUNNING:
                 return
@@ -328,16 +376,37 @@ async def _execute_task(task_id: str):
             batch_urls = urls[i:i + batch_size]
             batch_index = i // batch_size
 
-            await _process_batch(
+            batch_results = await _process_batch(
                 task_id,
                 batch_urls,
                 batch_index,
                 task.concurrency,
-                task.return_audio
+                task.return_audio,
+                task.use_asr
             )
 
-            # 批次间短暂延迟，避免请求过快
-            await asyncio.sleep(1)
+            # 动态延迟调整：检测本批是否有风控错误
+            task = get_task(task_id)
+            ratelimit_hits = 0
+            for r in batch_results:
+                if r.get("error") == "fetch_failed":
+                    msg = str(r.get("message", "")).lower()
+                    if any(k in msg for k in ["412", "429", "风控", "security control"]):
+                        ratelimit_hits += 1
+
+            if ratelimit_hits > 0:
+                # 触发风控：延迟翻倍（上限120秒）
+                new_delay = min(task.current_delay * 2, 120.0)
+                print(f"[批次风控检测] 本批出现{ratelimit_hits}个风控错误，延迟调整为 {new_delay:.1f}s")
+                _update_task(task_id, current_delay=new_delay)
+            else:
+                # 未触发风控：缓慢恢复至基础延迟
+                new_delay = max(task.batch_delay, task.current_delay * 0.8)
+                if abs(new_delay - task.current_delay) > 0.5:
+                    _update_task(task_id, current_delay=new_delay)
+
+            task = get_task(task_id)
+            await asyncio.sleep(task.current_delay)
 
         # 3. 完成
         _update_task(
