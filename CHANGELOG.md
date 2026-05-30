@@ -47,6 +47,38 @@
 
 ---
 
+## 已知问题 & 待优化（v0.3.0 方向）
+
+以下问题在 v0.2.0 实际使用中暴露，记录备查：
+
+### 1. B站 API 风控（-799）
+频繁调用 Bilibili API 会触发 `-799 请求过于频繁` 错误。
+目前翻页间有 1s 延迟，但连续多次独立请求之间没有全局限速。
+**待优化**：加全局请求队列或指数退避，批量操作前自动等待。
+
+### 2. `VideoOrder` 枚举值需运行时确认
+`bilibili-api-python` 不同版本枚举值不同。
+本次发现 `VideoOrder.CLICK` 不存在，实际应为 `VideoOrder.VIEW`；
+`VideoOrder.PUBDATE` 在某些版本也会报错，默认不传 order 参数反而更稳定。
+**待优化**：在 fetcher 初始化时做枚举值探测，或锁定 requirements.txt 版本。
+
+### 3. `list_channel_videos` 不支持按播放量排序
+`get_bilibili_video_list` 目前固定按发布时间拉取，
+用户想要「播放量最多的 N 个视频」需要在外层额外调 API。
+**待优化**：给 `fetch_channel_videos` 加 `order` 参数（`pubdate` / `view`），透传给 B站 API。
+
+### 4. B站频道视频数量受限
+未登录或低权限状态下，B站 API 最多返回 50 条公开视频。
+充电专属、隐藏视频不计入 `page.count`，需要带登录 cookie 才能看到完整数量。
+**待优化**：在 `fetch_channel_videos` 返回结果里注明 `is_partial: true` 并提示用户检查认证状态。
+
+### 5. MCP 工具配置后需重启才生效
+一键配置写入文件后，AI 客户端必须重启才能加载新的 MCP Server。
+目前管理界面只提示「重启」，但没有检测工具是否真的已经上线。
+**待优化**：增加 MCP 连通性检测（如 ping mcp server），在界面上显示「已连接 / 未连接」的实时状态。
+
+---
+
 ## v0.1.0 — 2026-04-07
 
 初始版本，FastAPI 字幕抓取服务。

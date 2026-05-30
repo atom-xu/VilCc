@@ -159,6 +159,17 @@ The management UI shows Bilibili auth status in real time.
 - bilibili-api-python
 - mcp (FastMCP)
 
+## Known Limitations
+
+| Issue | Details |
+|-------|---------|
+| Bilibili channel capped at 50 videos | Unauthenticated API limit; charging-exclusive and hidden videos not counted — needs cookie for full list |
+| Channel list sorts by date only | `list_channel_videos` doesn't support sorting by view count; requires a separate API call |
+| Bilibili rate limiting (-799) | Rapid consecutive requests trigger throttling; batch operations should pace requests |
+| MCP config requires client restart | Writing the config file doesn't notify the AI client — a manual restart is needed to load the new server |
+
+Full details and fix roadmap in [CHANGELOG.md](./CHANGELOG.md).
+
 ## License
 
 MIT

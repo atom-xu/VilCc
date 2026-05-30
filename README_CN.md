@@ -159,6 +159,17 @@ yt-dlp --cookies-from-browser chrome --cookies cookies.txt "https://www.bilibili
 - bilibili-api-python
 - mcp（FastMCP）
 
+## 已知限制
+
+| 问题 | 说明 |
+|------|------|
+| B站频道最多返回 50 条 | 未登录状态下 API 限制，充电专属/隐藏视频不计入；需带 cookie 才能获取完整列表 |
+| 频道列表不支持按播放量排序 | `list_channel_videos` 目前固定按发布时间；想要「播放量最高的 N 个」需额外调用 |
+| B站 API 频繁调用触发风控 | 连续请求会返回 -799 错误，批量操作建议控制频率 |
+| MCP 配置后必须重启客户端 | 写入配置文件后，AI 工具不会自动感知，需手动重启才能加载 |
+
+详细说明和修复计划见 [CHANGELOG.md](./CHANGELOG.md)。
+
 ## 许可证
 
 MIT
