@@ -170,6 +170,14 @@ yt-dlp --cookies-from-browser chrome --cookies cookies.txt "https://www.bilibili
 
 详细说明和修复计划见 [CHANGELOG.md](./CHANGELOG.md)。
 
+## 卸载
+
+```bash
+bash uninstall.sh
+```
+
+脚本会自动完成：停止运行中的服务、从所有 AI 客户端配置文件中删除 `vilcc` 条目（Claude Desktop、Claude Code、Cursor、VS Code、Windsurf、Trae/豆包 MarsCode、OpenClaw），最后询问是否删除项目文件夹。完成后重启使用的 AI 客户端即可。
+
 ## 许可证
 
 MIT

@@ -170,6 +170,14 @@ The management UI shows Bilibili auth status in real time.
 
 Full details and fix roadmap in [CHANGELOG.md](./CHANGELOG.md).
 
+## Uninstall
+
+```bash
+bash uninstall.sh
+```
+
+This script stops running processes, removes the `vilcc` entry from all AI client configs (Claude Desktop, Claude Code, Cursor, VS Code, Windsurf, Trae/MarsCode, OpenClaw), then asks before deleting the project folder. Restart your AI clients afterward.
+
 ## License
 
 MIT
