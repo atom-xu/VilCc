@@ -23,6 +23,18 @@ SUPPORTED_PLATFORMS = {
     "tieba": "贴吧",
 }
 
+# MediaCrawler CrawlerFactory uses different keys for some platforms
+_MC_PLATFORM_ID = {
+    "weibo": "wb",   # CrawlerFactory key
+}
+
+# MediaCrawler output data directory names (data/{dir}/{format}/)
+_MC_DATA_DIR = {
+    "dy":    "douyin",
+    "ks":    "kuaishou",
+    # others match the API platform ID directly
+}
+
 # Per-platform cookie storage (in-memory, loaded from env or set via API)
 _platform_cookies: Dict[str, str] = {}
 
@@ -49,24 +61,55 @@ def _setup_path():
         sys.path.insert(0, path_str)
 
 
+def _get_mc_modules():
+    """Load MediaCrawler's config and CrawlerFactory without conflicting with our main.py.
+
+    Must be called while holding _crawl_lock to avoid concurrent sys.modules mutation.
+    After first call, results are cached in sys.modules and this becomes a fast lookup.
+    """
+    _setup_path()
+
+    if "mc_crawler_factory" in sys.modules:
+        import config as mc_config  # already loaded from media_crawler/
+        return mc_config, sys.modules["mc_crawler_factory"]
+
+    # Temporarily remove our main.py so MediaCrawler's main.py can load as "main"
+    _our_main = sys.modules.pop("main", None)
+    try:
+        import config as mc_config       # loads media_crawler/config/
+        from main import CrawlerFactory  # loads media_crawler/main.py
+        # Stash CrawlerFactory under a sentinel key so we can skip the swap next time
+        sys.modules["mc_crawler_factory"] = CrawlerFactory
+        return mc_config, CrawlerFactory
+    finally:
+        # Restore our FastAPI app's main module (already fully loaded, just needs the key)
+        if _our_main is not None:
+            sys.modules["main"] = _our_main
+
+
+def _data_dir(platform: str) -> Path:
+    """Return the MediaCrawler output base directory for a platform."""
+    dir_name = _MC_DATA_DIR.get(platform, platform)
+    return MEDIA_CRAWLER_PATH / "data" / dir_name
+
+
 def _clear_output(platform: str):
-    """Remove stale output files before a crawl."""
-    data_dir = MEDIA_CRAWLER_PATH / "data" / platform
-    if data_dir.exists():
-        for f in data_dir.glob("*.json"):
+    """Remove stale output files before a crawl (searches all subdirectories)."""
+    base = _data_dir(platform)
+    if base.exists():
+        for f in base.rglob("*.jsonl"):
             f.unlink(missing_ok=True)
-        for f in data_dir.glob("*.jsonl"):
+        for f in base.rglob("*.json"):
             f.unlink(missing_ok=True)
 
 
 def _read_results(platform: str) -> List[Dict]:
-    """Read all JSON/JSONL output files from MediaCrawler's data directory."""
-    data_dir = MEDIA_CRAWLER_PATH / "data" / platform
+    """Read all JSON/JSONL output from MediaCrawler's data directory (recursive)."""
+    base = _data_dir(platform)
     results = []
-    if not data_dir.exists():
+    if not base.exists():
         return results
-    # Read JSONL files (one JSON object per line)
-    for f in sorted(data_dir.glob("*.jsonl")):
+    for f in sorted(base.rglob("*.jsonl")):
         try:
             with open(f, encoding="utf-8") as fp:
                 for line in fp:
@@ -78,8 +121,7 @@ def _read_results(platform: str) -> List[Dict]:
                             pass
         except Exception:
             pass
-    # Also read JSON files (list or single object)
-    for f in sorted(data_dir.glob("*.json")):
+    for f in sorted(base.rglob("*.json")):
         try:
             with open(f, encoding="utf-8") as fp:
                 data = json.load(fp)
@@ -94,13 +136,15 @@ def _read_results(platform: str) -> List[Dict]:
 
 async def _run_crawler(platform: str, crawl_type: str, config_overrides: Dict) -> List[Dict]:
     """Configure and run MediaCrawler, return parsed results."""
-    _setup_path()
-    _clear_output(platform)
+    mc_platform = _MC_PLATFORM_ID.get(platform, platform)
+    _clear_output(platform)  # uses _data_dir() mapping, not mc_platform
 
-    import config as mc_config
-    from main import CrawlerFactory
+    # MediaCrawler uses relative paths (libs/*.js, data/) — must be cwd before import too
+    _orig_cwd = os.getcwd()
+    os.chdir(str(MEDIA_CRAWLER_PATH))
 
-    # Fields to save/restore
+    mc_config, CrawlerFactory = _get_mc_modules()
+
     CONFIG_FIELDS = [
         "PLATFORM", "CRAWLER_TYPE", "KEYWORDS", "CRAWLER_MAX_NOTES_COUNT",
         "SAVE_DATA_OPTION", "LOGIN_TYPE", "COOKIES", "MAX_CONCURRENCY_NUM",
@@ -110,26 +154,27 @@ async def _run_crawler(platform: str, crawl_type: str, config_overrides: Dict) -
     saved = {f: getattr(mc_config, f, None) for f in CONFIG_FIELDS}
 
     try:
-        mc_config.PLATFORM = platform
+        mc_config.PLATFORM = mc_platform
         mc_config.CRAWLER_TYPE = crawl_type
         mc_config.SAVE_DATA_OPTION = "jsonl"
         mc_config.LOGIN_TYPE = "cookie"
         mc_config.COOKIES = get_cookies(platform)
-        mc_config.MAX_CONCURRENCY_NUM = 2
+        mc_config.MAX_CONCURRENCY_NUM = 1
         mc_config.ENABLE_GET_COMMENTS = False
         mc_config.ENABLE_GET_SUB_COMMENTS = False
-        mc_config.CRAWLER_MAX_SLEEP_SEC = 2
+        mc_config.CRAWLER_MAX_SLEEP_SEC = 1
         mc_config.HEADLESS = True
         mc_config.ENABLE_CDP_MODE = False
         mc_config.START_PAGE = 1
         for k, v in config_overrides.items():
             setattr(mc_config, k, v)
 
-        crawler = CrawlerFactory.create_crawler(platform)
+        crawler = CrawlerFactory.create_crawler(mc_platform)
         await crawler.start()
         return _read_results(platform)
 
     finally:
+        os.chdir(_orig_cwd)
         for f, v in saved.items():
             if v is not None:
                 try:
